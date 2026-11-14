@@ -515,7 +515,8 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
     int16_t *mw;
     uint32_t i, v, sc = k == HL_VOICE && hm_int != 0;
     int32_t pk = hm.pk_in, po = hm.pk_out, ui_in = 0, ui_out = 0, ui_fb = 0, ui_v[3] = {0, 0, 0};
-    int32_t fbk = hb.fbk, wg = hb.wg, ig = hb.ig, rep = hm.rep, byp = hb.byp, wg0, fb0, ig0;
+    int32_t fbk = hb.fbk, wg = k == HL_VOICE ? hb.wg : 32768, ig = hb.ig, rep = hm.rep, byp = hb.byp, wg0, fb0, ig0;   /* (§13o:
+                                                         * WET / DRY is T1's; a send lane's balance is bank F's, fx.c) */
     TIM_VOC_T(tl);                                      /* (§12: each lane's time, console "timing" ln_*) */
     if (!L->run)
         hm_lane_start(k);
