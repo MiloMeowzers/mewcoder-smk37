@@ -33,6 +33,8 @@ static const uint8_t HP_VRGB[3][3] = {{255, 150, 30}, {40, 190, 255}, {180, 100,
 #define HP_SEG_ON RGB(255, 40, 30)
 #define HP_SEG_OFF RGB(46, 8, 8)
 static struct {
+    uint16_t inpk;                                  /* the input's raw peak, held (the IN lamps' real thresholds) */
+    uint8_t inpk_t;                                 /* .. its hold, frames */
     uint8_t grp, msg_t, rv, rv_t, red_t[6];         /* the group; the header's message frames; the knob's voice, its
                                                      * frames; each meter's red hold */
     uint8_t mk[6], mkt[6];                          /* the meters (HM_UP_*): their steps, held, and the hold's frames */
@@ -392,6 +394,14 @@ static void hp_meters(void)
         int32_t pk = hm.up[k];
         uint32_t s = hp_step(pk);
         hm.up[k] = 0;
+        if (k == HM_UP_IN) {                            /* (the IN lamps: the raw peak, held ~0.5 s, then falling) */
+            if (pk >= (int32_t)hp.inpk)
+                hp.inpk = (uint16_t)(pk > 32767 ? 32767 : pk), hp.inpk_t = 15;
+            else if (hp.inpk_t)
+                hp.inpk_t--;
+            else
+                hp.inpk = (uint16_t)(hp.inpk - (hp.inpk >> 3));
+        }
         if (pk >= 29204)                                /* -1 dBFS: red, held ~1 s */
             hp.red_t[k] = 30;
         else if (hp.red_t[k])
@@ -520,7 +530,12 @@ static void hp_mkview(hp_view_t *w)
     w->spread = hm_spread;
     w->psel = hs.pan[hs.vsel ? (hs.vsel - 1u) % 3u : 0u];
     w->inl = hs.inl, w->fb = (uint8_t)hm_fb, w->wd = (uint8_t)hm_wd, w->dry = hs.dry, w->dmute = hs.mute & 1u;
-    w->lamps = (uint8_t)(pk >= 7u ? 5u : pk >= 6u ? 4u : pk >= 5u ? 3u : pk >= 4u ? 2u : pk >= 2u ? 1u : 0u);
+    {   /* the IN lamps at their labels: -40, -18, -12, -6, -1 dBFS (from the meter's 6 dB steps the red lamp lit from
+         * -12 dBFS: red on any healthy signal, 2026-11-15) */
+        uint32_t ip = hp.inpk;
+        w->lamps = (uint8_t)(ip >= 29204u ? 5u : ip >= 16422u ? 4u : ip >= 8231u ? 3u : ip >= 4125u ? 2u : ip >= 328u ? 1u : 0u);
+        (void)pk;
+    }
     w->clip = hp.red_t[HM_UP_IN] != 0;
     w->h949_red = hp.red_t[HM_UP_FB] != 0;
     for (v = 0; v < 3u; v++) {
