@@ -923,8 +923,11 @@ static inline int32_t hm_in(int32_t x, int32_t sg)
  * driven harder); the VOICE lane always all in */
 static inline int32_t hm_kd(uint32_t k)
 {
-    uint32_t a = k == HL_VOICE ? 100u : (hm_send[k & 3u] > 100u ? 100u : hm_send[k & 3u]);
-    return 32768 - (32768 - hb.kd) * (int32_t)a / 100;   /* (<= 3.3 M: 32 bits) */
+    if (k != HL_VOICE)                                  /* (harmoniser-spec.md §13o: T2, T3 and the drums' bank F is a
+                                                         * send: their dry is the track's, never cut by it; the harmony
+                                                         * added follows the send, bank A sets both after the lane) */
+        return 32768;
+    return hb.kd;                                       /* (T1: the harmoniser is the track, DRY LEVEL x WET / DRY) */
 }
 /* the insert order (harmoniser-spec.md §13e, the owner's choice 2026-11-14): track -> chain -> lane -> LEVEL -> pan /
  * sends / stem / mix. A lane track's LEVEL (its glide) and mute x DUCK act on the lane's output, the dry share and the
