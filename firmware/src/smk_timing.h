@@ -49,6 +49,8 @@ enum {
     TS_DKIT,     /* (2026-11-15, Build 1.2) inside the drums' unit: the kit (mix_drums: the voices, groups, rings, pan) */
     TS_DPRE,     /* .. its lane's input (the snapshot, hm_in) */
     TS_DPOST,    /* .. its lane's output (the blend, DRUMS's level, the sends, the stems) */
+    TS_QGRID, TS_QFIRE, TS_QREST,   /* (Build 1.3) inside the sequencer (seq_tick, every track summed): the grid; a new
+                                     * step; the ratchets and the rest */
     TS_N
 };
 static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wait", "pre_go", "ana", "units",
@@ -57,7 +59,7 @@ static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wa
                                           "c1",
                                           "c1_u1", "c1_u2", "c1_u3", "c1_ud", "c1_stem", "voc", "rest", "t5", "all",
                                           "eng1", "eng2", "eng3", "pre1", "pre2", "pre3", "mix1", "mix2", "mix3", "harm", "trk",
-                                          "ln_v", "ln_t2", "ln_t3", "ln_d", "d_kit", "d_pre", "d_post"};
+                                          "ln_v", "ln_t2", "ln_t3", "ln_d", "d_kit", "d_pre", "d_post", "q_grid", "q_fire", "q_rest"};
 static struct {
     uint32_t t, ut[2];                                  /* the section's start; the unit's, each core */
     uint32_t cur[TS_N];                                 /* this half's */

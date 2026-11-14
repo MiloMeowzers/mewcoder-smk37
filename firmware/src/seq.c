@@ -3218,6 +3218,9 @@ static void seq_tick(track_t *t, uint32_t adv)
     }
     if (!song.playing)
         return;
+    TIM_VOC_T(tq);                                   /* (Build 1.3: the sequencer's parts, every track summed: console
+                                                      * q_grid (where the grid is, the micro timing), q_fire (a new step:
+                                                      * locks, notes, MIDI out), q_rest (the ratchets, the gate) */
     abs = trk_grid(t, &into, &slen);
     {
         uint32_t div = trk_div(t);
@@ -3240,6 +3243,7 @@ static void seq_tick(track_t *t, uint32_t adv)
             fire = 1;                                /* the grid jumped ahead: catch up, a step a block */
         /* (abs + 1 == seq_abs: SWING turned up inside a played odd step: nothing until the grid is back) */
     }
+    TIM_LAP(TS_QGRID, tq);
     if (fire) {                                      /* a new step: one a block at most */
         t->seq_abs = nabs;
         idx = SQ_IDX(t, nabs, len);
@@ -3280,6 +3284,7 @@ static void seq_tick(track_t *t, uint32_t adv)
             seq_step(t, s, slen, skip);
         }
     }
+    TIM_LAP(TS_QFIRE, tq);
     /* the ratchets of the step playing, timed from where it fired (its hits ride with its nudge) */
     if (t->seq_abs == abs)
         rel = (int32_t)into - micro_units(t, abs, slen);
@@ -3289,6 +3294,7 @@ static void seq_tick(track_t *t, uint32_t adv)
         rel = (int32_t)into;
     if (t->seq_abs != SEQ_NONE)
         seq_ratchets(t, rel < 0 ? 0u : (uint32_t)rel, slen);
+    TIM_LAP(TS_QREST, tq);
 }
 
 /* MIDI in: the track that has channel ch (0..15) as its own: the drum track's GLO > DRUMS > CH, synth track i's

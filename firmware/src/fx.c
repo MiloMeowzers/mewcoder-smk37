@@ -911,6 +911,12 @@ static int32_t hm_dkd;                                  /* .. its dry's gain (th
  * and clamped after INPUT LEVEL). Under full scale the same as before, bit for bit. Bounds: |x >> 4| * 22370 and the
  * lane's in * INPUT LEVEL (<= 131071 * 16306) inside 32 bits */
 #define HM_IN_MAX 131071
+static inline int32_t hm_in1(int32_t x)                 /* (Build 1.3: hm_in at unity, the lanes' drive since §13o:
+                                                         * the same value, one product and a clamp fewer) */
+{
+    int32_t v = clamp(x >> 4, -95998, 95998);
+    return clamp((v * 22370) >> 11, -HM_IN_MAX, HM_IN_MAX);
+}
 static inline int32_t hm_in(int32_t x, int32_t sg)
 {
     int32_t v = clamp(x >> 4, -95998, 95998);
@@ -966,14 +972,24 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
     {
         uint32_t loud = 0;                              /* (§13f: the dry above the floor this block) */
         for (i = 0; i < n; i++) {
-            in[i] = hm_in(x[i], 32768);                 /* (§13o: at unity; VOICE's level: VOICE IN, in the engine) */
+            in[i] = hm_in1(x[i]);                       /* (§13o: at unity; VOICE's level: VOICE IN, in the engine) */
             loud |= (uint32_t)(x[i] > 8 || x[i] < -8);
         }
 #if BOARD_SMK37
         if (SP_ON(SP_T1 + k))
             pl = stem_pl, pr = stem_pr;
 #endif
-        if (!hm_lane(k, in, wl, wr, 0, n) && !loud) {  /* the lane asleep, the dry silent: nothing to hear (the stems,
+        uint32_t ran;
+        if (k == HL_VOICE && !sg && !hm_int) {          /* (Build 1.3: T1's MIX at 0, SCALE off: none of its lane is
+                                                         * heard and no lane needs its tracker; it stops, and starts from
+                                                         * silence when the MIX comes up, as a lane turned on) */
+            for (i = 0; i < n; i++)
+                wl[i] = wr[i] = 0;
+            L->run = 0, ran = 0;
+        } else {
+            ran = hm_lane(k, in, wl, wr, 0, n);
+        }
+        if (!ran && !loud) {                            /* the lane asleep, the dry silent: nothing to hear (the stems,
                                                          * the pair: silence, as they were cleared) */
             if (st)
                 for (i = 0; i < n; i++)
@@ -1567,22 +1583,23 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
 #endif
         if ((lane || SP_ON(SP_DRUMS)) && n <= CTL) {   /* the drums' lane, the STEREO PAIR: their part
                                                          * of this set's sums (the metronome's too), as one track's */
-            static int32_t z[4][CTL] __attribute__((section(".pool")));
+            static mixacc_t dk __attribute__((section(".pool")));   /* (Build 1.3: the kit into its own sums, no
+                                                         * snapshot of this set's and no differences) */
             uint32_t i;
             TIM_VOC_T(td);                              /* (Build 1.2: the drums' unit inside, console d_kit / d_pre /
                                                          * d_post) */
             for (i = 0; i < n; i++)
-                z[0][i] = mx->l[i], z[1][i] = mx->r[i], z[2][i] = mx->sr[i], z[3][i] = mx->sd[i];
+                dk.l[i] = dk.r[i] = dk.sr[i] = dk.sd[i] = 0;
 #ifdef SMK_HARM
             drums_unity = (uint8_t)(lane && n <= VOC_MAXN);   /* (§13e: the kit at DRUMS 100 into its lane) */
 #endif
-            mix_drums(n, mx);
+            mix_drums(n, &dk);
             TIM_LAP(TS_DKIT, td);
 #ifdef SMK_HARM
             drums_unity = 0;
             if (lane && n <= VOC_MAXN) {                /* their lane: the kit's mono sum in; the dry kit at its own
-                                                         * pans (hb.kd), the voices at theirs; the sends the dry's; then
-                                                         * DRUMS's level on all of it (§13e: the fader after the lane) */
+                                                         * pans, the voices at theirs; the sends the dry's; then DRUMS's
+                                                         * level on all of it (§13e: the fader after the lane) */
                 static int32_t dpg = -1;                /* DRUMS's level after the lane, Q15 (100 = 32768), its glide */
                 int32_t(*wb)[VOC_MAXN] = hm_wb[mx != &acc[0]];
                 int32_t *in = wb[0], *wl = wb[1], *wr = wb[2], sg = hm_wet(HL_DRUM), kd = hm_kd(HL_DRUM);   /* (§13o) */
@@ -1590,8 +1607,11 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 uint32_t v, sep = stem_feed && (stem_layout == 1u || stem_layout == 3u);   /* (§13l-1: the voices
                                                          * apart only for DRUMS+RET / ALL DRY's drum channels; wl / wr the
                                                          * same either way, hm_lane) */
+                uint32_t snd = (uint32_t)(song.g[G_DRREV] | song.g[G_DRDLY]) | (uint32_t)(thr_rev | thr_dly);
+                int32_t *ppl = SP_ON(SP_DRUMS) ? stem_pl : 0;
                 hm_lane_t *L = &hm_ln[HL_DRUM];
                 int32_t sg0, kd0;
+                uint32_t loud = 0;                      /* (§13f: the kit's block above the floor) */
                 if (dpg < 0)
                     dpg = dt;
                 d0 = dpg, dpg = mix_glide(d0, dt), dd = (dpg - d0) >> CTL_LOG2;
@@ -1599,10 +1619,9 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 if (!L->run || !L->rok)                 /* (§13c: the send and the dry's share ramped across the block) */
                     L->rsg = sg, L->rkd = kd;
                 sg0 = L->rsg, kd0 = L->rkd, L->rsg = sg, L->rkd = kd;
-                uint32_t loud = 0;                      /* (§13f: the kit's block above the floor) */
                 for (i = 0; i < n; i++) {
-                    int32_t kx = ((mx->l[i] - z[0][i]) >> 1) + ((mx->r[i] - z[1][i]) >> 1);
-                    in[i] = hm_in(kx, 32768);           /* (§13o: at unity) */
+                    int32_t kx = (dk.l[i] >> 1) + (dk.r[i] >> 1);
+                    in[i] = hm_in1(kx);                 /* (§13o: at unity) */
                     loud |= (uint32_t)(kx > 8 || kx < -8);
                 }
                 TIM_LAP(TS_DPRE, td);
@@ -1614,10 +1633,9 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                     if (ran)
                         loud = 1;
                 }
-                if (!loud) {   /* the lane asleep, the kit silent
-                                                         * (the drums stopped; the metronome would count as sound): its
-                                                         * dry and sends under the floor, left as they are; its stem
-                                                         * silence */
+                if (!loud) {                            /* the lane asleep, the kit silent (the drums stopped; the
+                                                         * metronome would count as sound): under the floor, nothing
+                                                         * added; its stem silence */
                     for (i = 0; i < n; i++)
                         hm_dm[i] = 0;
                     hm_dran = 1;
@@ -1628,24 +1646,34 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                     int32_t wq = sg0 + (((sg - sg0) * (int32_t)i) >> 5);   /* (§13o: the harmony's share) */
                     int32_t gd = (int32_t)(((int64_t)kq * g) >> 15), gw = (int32_t)(((int64_t)wq * g) >> 15);   /* (Build
                                                          * 1.2: the blend and DRUMS folded, one product a path) */
-                    int32_t ol = hm_sc(mx->l[i] - z[0][i], gd) + hm_sc(VOC_VS(wl[i]), gw);
-                    int32_t orr = hm_sc(mx->r[i] - z[1][i], gd) + hm_sc(VOC_VS(wr[i]), gw);
-                    mx->sr[i] = z[2][i] + hm_sc(mx->sr[i] - z[2][i], gd);
-                    mx->sd[i] = z[3][i] + hm_sc(mx->sd[i] - z[3][i], gd);
-                    mx->l[i] = z[0][i] + ol, mx->r[i] = z[1][i] + orr;
+                    int32_t ol = hm_sc(dk.l[i], gd) + hm_sc(VOC_VS(wl[i]), gw);
+                    int32_t orr = hm_sc(dk.r[i], gd) + hm_sc(VOC_VS(wr[i]), gw);
+                    if (snd) {                          /* (the drums' sends: nothing to add at 0) */
+                        mx->sr[i] += hm_sc(dk.sr[i], gd);
+                        mx->sd[i] += hm_sc(dk.sd[i], gd);
+                    }
+                    mx->l[i] += ol, mx->r[i] += orr;
                     hm_dm[i] = (ol >> 1) + (orr >> 1);  /* (SYNTHS+RET's DRUMS channel) */
+                    if (ppl)
+                        ppl[i] = ol, stem_pr[i] = orr;  /* (the STEREO PAIR: the drums after their lane) */
                     if (sep)
                         for (v = 0; v < 3u; v++)
                             hm_dwv[v][i] = hm_sc(hm_dwv[v][i], gw);   /* (the voices' drum channels, after DRUMS too) */
                 }
                 hm_dran = 1;
                 TIM_LAP(TS_DPOST, td);
+                goto drum_lane_done;
             }
-drum_lane_done:
 #endif
+            for (i = 0; i < n; i++) {                   /* (no lane: the kit into this set's sums as it was) */
+                mx->l[i] += dk.l[i], mx->r[i] += dk.r[i], mx->sr[i] += dk.sr[i], mx->sd[i] += dk.sd[i];
+            }
             if (SP_ON(SP_DRUMS))
                 for (i = 0; i < n; i++)
-                    stem_pl[i] = mx->l[i] - z[0][i], stem_pr[i] = mx->r[i] - z[1][i];
+                    stem_pl[i] = dk.l[i], stem_pr[i] = dk.r[i];
+#ifdef SMK_HARM
+drum_lane_done:
+#endif
             TIM_UNIT(mx, 3u);
             return;
         }
