@@ -578,6 +578,8 @@ static void hp_console(const char *p)
             con_dec(hm.lpf[v]);
             con_puts(" f");
             con_dec(hm_send[v]);
+            if (hm_ln[v].quiet >= HM_QBLK)
+                con_puts(" zz");                        /* (§13f: asleep, silent) */
             hm.lpi[v] = hm.lpo[v] = hm.lpf[v] = 0;
         }
         con_putc(13);
@@ -599,6 +601,16 @@ static void con_exec(const char *p)
         con_crash();
     else if (con_word(&p, "params"))
         con_params();
+#if UAC6
+    else if (con_word(&p, "dither")) {                   /* dither 0 | 1: the 16-bit stems' TPDF dither (usb.c, §13j's
+                                                         * A/B; not saved, off at power-on) */
+        int ok;
+        uint32_t a = con_num(&p, &ok);
+        if (ok)
+            stem_dither = (uint8_t)(a != 0u);
+        con_kv("stem_dither", stem_dither);
+    }
+#endif
 #if SMK_TIMING
     else if (con_word(&p, "timing"))
         con_timing();

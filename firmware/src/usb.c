@@ -1623,6 +1623,11 @@ static inline __attribute__((always_inline)) void uac6_fir(const int32_t *const 
         ph -= UAC_FIR_L;
     }
 }
+/* 16-bit stems' dither (harmoniser-spec.md §13j, off until the owner's A/B: the console's "dither 1"): TPDF, two 8-bit
+ * uniforms (1 LSB of 16 bit each, in the 24-bit word) added before the packet keeps the top two bytes (uac_service);
+ * a state a channel (a channel is on one core in a block: no shared state); a silent channel stays digital silence */
+static uint8_t stem_dither;
+static uint32_t r6_dsd[U6_CH] = {1u, 2u, 3u, 4u, 5u, 6u};
 static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1,
                                                   uint32_t c_lo, uint32_t c_hi)
 {
@@ -1634,6 +1639,7 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
             uac6_fir(ch, n, m0, m1, c_lo, c_hi, &r6_taps[0][0], UAC_FIR_N);
         return;
     }
+    uint32_t dith = stem_dither && U6_B16;
     uint32_t live = 0;                                  /* (the channels with sound this block: a silent one is zero
                                                          * frames without the scale, harmoniser-spec.md §13l-5) */
     for (c = c_lo; c < c_hi; c++) {
@@ -1653,6 +1659,11 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
             }
             x = x > 262143 ? 262143 : x < -262144 ? -262144 : x;
             v = (x * m) >> 6;
+            if (dith) {                                 /* (§13j: TPDF, centred for the truncation) */
+                uint32_t a = r6_dsd[c] * 1664525u + 1013904223u, b = a * 1664525u + 1013904223u;
+                r6_dsd[c] = b;
+                v += (int32_t)(a >> 24) + (int32_t)(b >> 24) - 255 + 128;
+            }
             v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
             f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
         }

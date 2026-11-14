@@ -143,7 +143,17 @@ typedef struct {
     int32_t ph[3], g[3];             /* each voice: its segment phase (Q16 storage samples), its fade (Q15) */
     int32_t eq[2][4];                /* the feedback EQ's state (LOW, HIGH) */
     uint8_t run;                     /* 0: cleared at its next block (just turned on: no stale audio) */
+    uint8_t rok;                     /* the ramps' last values set (harmoniser-spec.md §13c) */
+    int32_t rwg, rfb, rig;           /* WET / DRY, FEEDBACK, INPUT LEVEL at the last block's end: each ramped across the
+                                      * block from there to this block's (a fader step is no gain step on the audio) */
+    int32_t rkd, rsg;                /* the dry's share and bank F's send (the mixer's: fx.c hm_insert, mix_units) */
+    uint16_t quiet;                  /* blocks its input, voices and feedback have all been silent (§13f) */
 } hm_lane_t;
+/* skip silent work (harmoniser-spec.md §13f): a lane whose input, voices and feedback have stayed under HM_QTHR (int16
+ * scale: ~-80 dB) for longer than its memory (HM_LEN: 320 ms) does nothing until its input wakes it; REPEAT holds it
+ * awake. Everything it would have made is under -80 dB, so the output is silence either way */
+#define HM_QTHR 3
+#define HM_QBLK 448u                     /* blocks of 32 (~325 ms) */
 static hm_lane_t hm_ln[HL_N] HM_POOL;
 static int16_t hm_lmem[HL_N - 1u][HM_LEN] HM_POOL;   /* T2, T3, DRUMS (42 KB; the VOICE lane's in smk_fxpool) */
 static struct {                      /* the block's shared values (hm_block, core 0; the lanes read them) */
@@ -497,18 +507,43 @@ static void __attribute__((noinline)) hm_block(void)
 /* lane k: n inputs (int16 scale, the lane's input level applied) into its memory; its voices' wet, WET applied, into
  * wl / wr (each voice at its pan) and, when wv, each voice apart (the drums' channels, §10c-2). The dry is the caller's
  * (hb.kd: its own signal, mono or stereo). The VOICE lane runs the tracker (INTERVALS SCALE) */
-static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int32_t *wl, int32_t *wr,
-                                              int32_t (*wv)[VOC_MAXN], uint32_t n)
+static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int32_t *wl, int32_t *wr,
+                                                  int32_t (*wv)[VOC_MAXN], uint32_t n)   /* 0: skipped, silent (§13f) */
 {
     hm_lane_t *L = &hm_ln[k % HL_N];
     const int16_t *mr;
     int16_t *mw;
     uint32_t i, v, sc = k == HL_VOICE && hm_int != 0;
     int32_t pk = hm.pk_in, po = hm.pk_out, ui_in = 0, ui_out = 0, ui_fb = 0, ui_v[3] = {0, 0, 0};
-    int32_t fbk = hb.fbk, wg = hb.wg, ig = hb.ig, rep = hm.rep, byp = hb.byp;
+    int32_t fbk = hb.fbk, wg = hb.wg, ig = hb.ig, rep = hm.rep, byp = hb.byp, wg0, fb0, ig0;
     TIM_VOC_T(tl);                                      /* (§12: each lane's time, console "timing" ln_*) */
     if (!L->run)
         hm_lane_start(k);
+    if (L->quiet >= HM_QBLK && !rep) {                  /* (§13f: asleep; a block of input above the floor wakes it) */
+        uint32_t m = n > VOC_MAXN ? VOC_MAXN : n, a = 0;
+        for (i = 0; i < m; i++) {
+            int32_t x = (in[i] * ig) >> 12;
+            a |= (uint32_t)(x > HM_QTHR || x < -HM_QTHR);
+        }
+        if (!a) {
+            for (i = 0; i < m; i++)
+                wl[i] = wr[i] = 0;
+            if (wv)
+                for (v = 0; v < 3u; v++)
+                    for (i = 0; i < m; i++)
+                        wv[v][i] = 0;
+            L->rwg = wg, L->rfb = fbk, L->rig = ig;     /* (the ramps start where the controls are when it wakes) */
+            TIM_ADD(TS_LV + k % HL_N, TIM_NOW() - tl);
+            return 0u;
+        }
+        L->quiet = 0;
+    }
+    if (!L->rok)                                        /* (§13c: the ramps from the last block's values) */
+        L->rwg = wg, L->rfb = fbk, L->rig = ig, L->rok = 1;
+    wg0 = L->rwg, fb0 = L->rfb, ig0 = L->rig;
+    L->rwg = wg, L->rfb = fbk, L->rig = ig;
+    {
+        const int32_t wg1 = wg, fb1 = fbk, ig1 = ig;
     mr = mw = L->mem;
     if (n > VOC_MAXN)
         n = VOC_MAXN;
@@ -558,7 +593,12 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
         const int32_t lA = hb.lg[0], lB = hb.lg[1], lC = hb.lg[2], plA = hb.pl[0], plB = hb.pl[1], plC = hb.pl[2];
         const int32_t prA = hb.pr[0], prB = hb.pr[1], prC = hb.pr[2];
         for (i = 0; i < n; i++) {
-            int32_t x = clamp((in[i] * ig) >> 12, -32767, 32767), vs = 0, sl = 0, sr = 0, wq, ax;   /* (INPUT LEVEL) */
+            int32_t x, vs = 0, sl = 0, sr = 0, wq, ax;
+            wg = wg0 + (((wg1 - wg0) * (int32_t)i) >> 5);   /* (§13c: across the block, VOC_MAXN = 32; at rest the same
+                                                         * value as before, bit for bit) */
+            fbk = fb0 + (((fb1 - fb0) * (int32_t)i) >> 5);
+            ig = ig0 + (((ig1 - ig0) * (int32_t)i) >> 5);
+            x = clamp((in[i] * ig) >> 12, -32767, 32767);   /* (INPUT LEVEL) */
             if (t & 1u) {                               /* (the meters: once a pair, §12) */
                 ax = x < 0 ? -x : x;
                 pk = ax > pk ? ax : pk;
@@ -613,10 +653,19 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
         }
         L->w = w, L->t = t, L->half = half, L->fb = fb;
         L->g[0] = gA, L->g[1] = gB, L->g[2] = gC, L->ph[0] = pA, L->ph[1] = pB, L->ph[2] = pC;
+    }
 #undef HM_VOICE
 #undef HM_S16
 #undef HM_S15
 #undef HM_DQ
+    }
+ {
+        int32_t af = L->fb < 0 ? -L->fb : L->fb;        /* (§13f: this block silent throughout? a count toward sleep) */
+        if (!rep && ui_in <= HM_QTHR && ui_out <= HM_QTHR && af <= HM_QTHR && ui_v[0] <= HM_QTHR && ui_v[1] <= HM_QTHR &&
+            ui_v[2] <= HM_QTHR)
+            L->quiet = (uint16_t)(L->quiet < 0xFFFFu ? L->quiet + 1u : L->quiet);
+        else
+            L->quiet = 0;
     }
     hm.pk_in = pk, hm.pk_out = po;
     if (ui_in > hm.up[HM_UP_IN])                        /* (the page's, the loudest lane's: it takes them at its rate) */
@@ -644,6 +693,7 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
         }
     }
     TIM_ADD(TS_LV + k % HL_N, TIM_NOW() - tl);
+    return 1u;
 }
 /* T1's engine while HARMONY is on (voice.c track_render): the input routed to HARMONY at VOICE IN, n <= VOC_MAXN samples
  * on the track's scale; its chain (DIST, SLICER, LEVEL, the punch-in) then the VOICE lane (fx.c hm_insert); 1 (the chain
@@ -651,12 +701,16 @@ static void __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int
 static uint32_t __attribute__((noinline)) hm_render(track_t *t, int32_t *out, uint32_t n)
 {
     uint32_t i;
-    int32_t vg = VOC_AUDIO_ON ? HM_GAIN(hm_send[0]) : 0;   /* VOICE IN (AUDIO IN off: silent) */
+    static int32_t vgl = -1;                           /* VOICE IN at the last block's end (§13c: ramped) */
+    int32_t vg = VOC_AUDIO_ON ? HM_GAIN(hm_send[0]) : 0, v0;   /* VOICE IN (AUDIO IN off: silent) */
     const int16_t *in = uin_dst[UD_HARM];
     (void)t;
+    if (vgl < 0)
+        vgl = vg;
+    v0 = vgl, vgl = vg;
     if (n > VOC_MAXN)
         n = VOC_MAXN;
     for (i = 0; i < n; i++)
-        out[i] = VOC_VS((in[i] * vg) >> 15);
+        out[i] = VOC_VS((in[i] * (v0 + (((vg - v0) * (int32_t)i) >> 5))) >> 15);
     return 1u;
 }
