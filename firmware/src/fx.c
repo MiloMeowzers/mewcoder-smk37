@@ -984,8 +984,12 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
     for (i = 0; i < n; i++) {
         int32_t lv = pg->l0 + pg->dl * (int32_t)i, g = pg->ga + (((pg->gb - pg->ga) * (int32_t)i) >> CTL_LOG2);
         int32_t wq = sg0 + (((sg - sg0) * (int32_t)i) >> 5);   /* (§13o: the harmony's share, ramped) */
-        int32_t xd = hm_post(hm_sc(x[i], kd0 + (((kd - kd0) * (int32_t)i) >> 5)), lv, g);
-        int32_t vl = hm_post(hm_sc(VOC_VS(wl[i]), wq), lv, g), vr = hm_post(hm_sc(VOC_VS(wr[i]), wq), lv, g);
+        int32_t kq = kd0 + (((kd - kd0) * (int32_t)i) >> 5), gp = g < 32767 ? g : 32768;
+        /* (Build 1.2: the blend, LEVEL and mute x DUCK folded into one gain a path, Q15: one product each instead of
+         * three; within 1 LSB of the three in turn) */
+        int32_t gd = (int32_t)(((int64_t)((kq * (int64_t)lv) >> 12) * gp) >> 15);
+        int32_t gw = (int32_t)(((int64_t)((wq * (int64_t)lv) >> 12) * gp) >> 15);
+        int32_t xd = hm_sc(x[i], gd), vl = hm_sc(VOC_VS(wl[i]), gw), vr = hm_sc(VOC_VS(wr[i]), gw);
         int32_t m = xd + ((vl + vr) >> 1), xs, gl, gr, ol, orr, a = m < 0 ? -m : m;
         if (a > *pk)
             *pk = a;                                    /* (the track's meter: what it sends on, after its fader) */
@@ -1610,15 +1614,17 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 for (i = 0; i < n; i++) {
                     int32_t g = d0 + dd * (int32_t)i, kq = kd0 + (((kd - kd0) * (int32_t)i) >> 5);
                     int32_t wq = sg0 + (((sg - sg0) * (int32_t)i) >> 5);   /* (§13o: the harmony's share) */
-                    int32_t ol = hm_sc(hm_sc(mx->l[i] - z[0][i], kq) + hm_sc(VOC_VS(wl[i]), wq), g);
-                    int32_t orr = hm_sc(hm_sc(mx->r[i] - z[1][i], kq) + hm_sc(VOC_VS(wr[i]), wq), g);
-                    mx->sr[i] = z[2][i] + hm_sc(hm_sc(mx->sr[i] - z[2][i], kq), g);
-                    mx->sd[i] = z[3][i] + hm_sc(hm_sc(mx->sd[i] - z[3][i], kq), g);
+                    int32_t gd = (int32_t)(((int64_t)kq * g) >> 15), gw = (int32_t)(((int64_t)wq * g) >> 15);   /* (Build
+                                                         * 1.2: the blend and DRUMS folded, one product a path) */
+                    int32_t ol = hm_sc(mx->l[i] - z[0][i], gd) + hm_sc(VOC_VS(wl[i]), gw);
+                    int32_t orr = hm_sc(mx->r[i] - z[1][i], gd) + hm_sc(VOC_VS(wr[i]), gw);
+                    mx->sr[i] = z[2][i] + hm_sc(mx->sr[i] - z[2][i], gd);
+                    mx->sd[i] = z[3][i] + hm_sc(mx->sd[i] - z[3][i], gd);
                     mx->l[i] = z[0][i] + ol, mx->r[i] = z[1][i] + orr;
                     hm_dm[i] = (ol >> 1) + (orr >> 1);  /* (SYNTHS+RET's DRUMS channel) */
                     if (sep)
                         for (v = 0; v < 3u; v++)
-                            hm_dwv[v][i] = hm_sc(hm_sc(hm_dwv[v][i], wq), g);   /* (the voices' drum channels, after DRUMS too) */
+                            hm_dwv[v][i] = hm_sc(hm_dwv[v][i], gw);   /* (the voices' drum channels, after DRUMS too) */
                 }
                 hm_dran = 1;
             }
