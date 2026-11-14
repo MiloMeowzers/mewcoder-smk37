@@ -1582,10 +1582,21 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 if (!L->run || !L->rok)                 /* (§13c: the send and the dry's share ramped across the block) */
                     L->rsg = sg, L->rkd = kd;
                 sg0 = L->rsg, kd0 = L->rkd, L->rsg = sg, L->rkd = kd;
-                for (i = 0; i < n; i++)
-                    in[i] = hm_in(((mx->l[i] - z[0][i]) >> 1) + ((mx->r[i] - z[1][i]) >> 1),
-                                  sg0 + (((sg - sg0) * (int32_t)i) >> 5));
-                hm_lane(HL_DRUM, in, wl, wr, sep ? hm_dwv : 0, n);
+                uint32_t loud = 0;                      /* (§13f: the kit's block above the floor) */
+                for (i = 0; i < n; i++) {
+                    int32_t kx = ((mx->l[i] - z[0][i]) >> 1) + ((mx->r[i] - z[1][i]) >> 1);
+                    in[i] = hm_in(kx, sg0 + (((sg - sg0) * (int32_t)i) >> 5));
+                    loud |= (uint32_t)(kx > 8 || kx < -8);
+                }
+                if (!hm_lane(HL_DRUM, in, wl, wr, sep ? hm_dwv : 0, n) && !loud) {   /* the lane asleep, the kit silent
+                                                         * (the drums stopped; the metronome would count as sound): its
+                                                         * dry and sends under the floor, left as they are; its stem
+                                                         * silence */
+                    for (i = 0; i < n; i++)
+                        hm_dm[i] = 0;
+                    hm_dran = 1;
+                    goto drum_lane_done;
+                }
                 for (i = 0; i < n; i++) {
                     int32_t g = d0 + dd * (int32_t)i, kq = kd0 + (((kd - kd0) * (int32_t)i) >> 5);
                     int32_t ol = hm_sc(hm_sc(mx->l[i] - z[0][i], kq) + VOC_VS(wl[i]), g);
@@ -1600,6 +1611,7 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 }
                 hm_dran = 1;
             }
+drum_lane_done:
 #endif
             if (SP_ON(SP_DRUMS))
                 for (i = 0; i < n; i++)
