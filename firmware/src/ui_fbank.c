@@ -70,16 +70,20 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
         if (i == 2u) {
             hv[0] = (int16_t)hm_send[0];
             *vp = &hv[0];
+        } else if (i == 3u) {                      /* (WET / DRY moved to F's T1 column: harmoniser-spec.md §13p) */
+            *vp = &zero;
+            return &FB_NONE;
         } else {
-            *vp = i == 1u ? &hm_fb : &hm_wd;
+            *vp = &hm_fb;
         }
         return &PCT;
     }
     if (b == 5u) {                                 /* F, SENDS: T2, T3, the drums into the harmoniser (T1: it) */
-        static const param_desc_t SND = {"SEND", F_PCT, 0, 127, 0, 0, 0};
-        if (i == 0u) {
-            *vp = &zero;
-            return &FB_NONE;
+        static const param_desc_t SND = {"MIX", F_PCT, 0, 127, 0, 0, 0};   /* (each track's dry / harmony balance:
+                                                     * 0 dry, 100 the harmony alone, §13o / §13p) */
+        if (i == 0u) {                             /* T1: its balance (hm_wd, was bank E's WET / DRY) */
+            *vp = &hm_wd;
+            return &SND;
         }
         hv[i & 3u] = (int16_t)hm_send[i & 3u];
         *vp = &hv[i & 3u];

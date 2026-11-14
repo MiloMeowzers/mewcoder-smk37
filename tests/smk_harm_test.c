@@ -74,7 +74,7 @@ static void reset(void)
     hm_ring = pool;
     hm_spread = 0;
     memset(&trk[0], 0, sizeof trk[0]);
-    hm_send[0] = 100, audio_on = 1, hm_pitch = 0, hm_fb = 0, hm_int = 0, hm_wd = 64;
+    hm_send[0] = 100, audio_on = 1, hm_pitch = 0, hm_fb = 0, hm_int = 0, hm_wd = 50;   /* (§13p: 50 = half each) */
     hs = HS_DEF, hm_pad = 0;                         /* (the HARMONY page at its defaults) */
     trk[0].p[P_TFLT] = -40, trk[0].p[P_DLY] = 90;    /* (a synth preset's FILTER and DELAY SEND: ignored, 67ba07e's
                                                       * octave climb) */
@@ -91,8 +91,12 @@ static void run(const int16_t *in, int32_t *out, uint32_t n)
             x[k] = ((in ? in[i + k] : 0) * vg) >> 15;   /* (T1's engine: the input at VOICE IN, int16 scale) */
         hm_block();
         hm_lane(HL_VOICE, x, wl, wr, 0, m);
-        for (k = 0; k < m; k++)                         /* (centred voices: wl = wr = the mono wet) */
-            out[i + k] = VOC_VS(((x[k] * hb.kd) >> 15) + ((wl[k] >> 1) + (wr[k] >> 1)));
+        {   /* (§13p, as fx.c hm_wet / hm_kd: bank F's T1 balance f, the dry (1 - f) x DRY LEVEL; OUT: the dry whole) */
+            int32_t f = (hm_wd > 100 ? 100 : hm_wd < 0 ? 0 : hm_wd) * 32768 / 100;
+            int32_t kd = hb.byp ? 32768 : (int32_t)(((int64_t)(32768 - f) * hb.kd) >> 15);
+            for (k = 0; k < m; k++)                     /* (centred voices: wl = wr = the mono wet) */
+                out[i + k] = VOC_VS(((x[k] * kd) >> 15) + (int32_t)(((int64_t)((wl[k] >> 1) + (wr[k] >> 1)) * f) >> 15));
+        }
     }
 }
 /* a lane of track k (not the VOICE lane) on x alone: its wet (left + right) / 2, int16 scale */

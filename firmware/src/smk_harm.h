@@ -499,7 +499,8 @@ static void __attribute__((noinline)) hm_block(void)
     dg = hs.mute & 1u ? 0 : (int32_t)(hs.dry > 100u ? 100u : hs.dry) * 32768 / 100;   /* DRY LEVEL */
     hb.fbk = fbk, hb.wg = wg, hb.dg = dg, hb.ig = HM_INL[hs.inl % HM_INL_N];
     hb.byp = (uint8_t)(hs.byp & 1u), hb.eql = (uint8_t)(li != HM_LOW_0), hb.eqh = (uint8_t)(hi != HM_HIGH_0);
-    hb.kd = hb.byp ? 32768 : (int32_t)(((int64_t)dg * (32768 - wg)) >> 15);
+    hb.kd = hb.byp ? 32768 : dg;         /* (§13p: DRY LEVEL / the DRY pad, every lane's dry trim; the balance is bank F's,
+                                          * fx.c hm_wet / hm_kd) */
     for (v = 0; v < HL_N; v++)                          /* (a track's lane turned off: cleared when it comes back) */
         if (v && !HM_LANE_ON(v))
             hm_ln[v].run = 0;
@@ -515,7 +516,7 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
     int16_t *mw;
     uint32_t i, v, sc = k == HL_VOICE && hm_int != 0;
     int32_t pk = hm.pk_in, po = hm.pk_out, ui_in = 0, ui_out = 0, ui_fb = 0, ui_v[3] = {0, 0, 0};
-    int32_t fbk = hb.fbk, wg = k == HL_VOICE ? hb.wg : 32768, ig = hb.ig, rep = hm.rep, byp = hb.byp, wg0, fb0, ig0;   /* (§13o:
+    int32_t fbk = hb.fbk, wg = 32768, ig = hb.ig, rep = hm.rep, byp = hb.byp, wg0, fb0, ig0;   /* (§13o:
                                                          * WET / DRY is T1's; a send lane's balance is bank F's, fx.c) */
     TIM_VOC_T(tl);                                      /* (§12: each lane's time, console "timing" ln_*) */
     if (!L->run)

@@ -924,13 +924,15 @@ static inline int32_t hm_in(int32_t x, int32_t sg)
 /* harmoniser-spec.md §13o: a send lane's (T2, T3, the drums) bank F is its dry / harmony balance, the level held:
  * harmony f, dry 1 - f (f = send / 100, at most 1: 100 the harmony alone), the lane driven at unity. T1: the
  * harmoniser is the track, DRY LEVEL x WET / DRY (hb.kd) and its wet whole */
-static inline int32_t hm_wet(uint32_t k)
+static inline int32_t hm_wet(uint32_t k)            /* (§13p: T1's balance too, bank F's T1 column: hm_wd) */
 {
-    return k == HL_VOICE ? 32768 : (int32_t)(hm_send[k & 3u] > 100u ? 100u : hm_send[k & 3u]) * 32768 / 100;
+    int32_t f = k == HL_VOICE ? hm_wd : (int32_t)hm_send[k & 3u];
+    return (f > 100 ? 100 : f < 0 ? 0 : f) * 32768 / 100;
 }
-static inline int32_t hm_kd(uint32_t k)
+static inline int32_t hm_kd(uint32_t k)             /* the dry: (1 - f) x DRY LEVEL (G3: every track's dry trim);
+                                                     * IN / OUT = OUT: the dry whole */
 {
-    return k == HL_VOICE ? hb.kd : 32768 - hm_wet(k);
+    return hb.byp ? 32768 : hm_sc(32768 - hm_wet(k), hb.kd);
 }
 /* the insert order (harmoniser-spec.md §13e, the owner's choice 2026-11-14): track -> chain -> lane -> LEVEL -> pan /
  * sends / stem / mix. A lane track's LEVEL (its glide) and mute x DUCK act on the lane's output, the dry share and the
