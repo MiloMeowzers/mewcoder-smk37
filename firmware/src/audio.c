@@ -22,7 +22,11 @@ struct felucca_dbg {
 static volatile uint32_t audio_halves, audio_max_us;
 static volatile uint32_t t5_nested_ticks;              /* TIMER4 ticks TIMER5 spent nested in this ISR (main.c) */
 #define SCOPE_N 512u
+#if SMK_VOC_LEAN
+static int16_t scope_buf[SCOPE_N];      /* left (graph_scope; the vocoder build has no visualiser: no right channel) */
+#else
 static int16_t scope_buf[SCOPE_N], scope_bufr[SCOPE_N];   /* left, right (the visualiser): the mix at full level */
+#endif
 static uint32_t scope_w;
 
 static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 -> 24 bit */
@@ -48,7 +52,9 @@ static void mix_done(int32_t *out, uint32_t n)          /* fx.c: the block's tai
     for (i = 0; i < n; i++) {
         if (i & 1u)
         {
+#if !SMK_VOC_LEAN
             scope_bufr[scope_w & (SCOPE_N - 1u)] = vis_tap[2u * i + 1u];   /* (fx.c: MASTER all the way up) */
+#endif
             scope_buf[scope_w++ & (SCOPE_N - 1u)] = vis_tap[2u * i];
         }
         out[2u * i] <<= OUT_SHIFT;

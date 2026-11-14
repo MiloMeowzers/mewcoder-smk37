@@ -250,6 +250,8 @@ static void con_status(void)
     con_kv("uac6_frames", (int32_t)uac.frames);
     con_kv("uac6_missed", (int32_t)uac.missed);          /* IN tokens that found no packet queued */
     con_kv("uac6_stalls", (int32_t)uac.stalls);
+    con_kv("uac6_recentres", (int32_t)uac.recentres);   /* the ring ran full: the reader moved back (§13d) */
+    con_kv("uac6_skips", (int32_t)uac.skips);           /* frames a queued packet sat untaken (§13k) */
     con_kv("uac6_rate_sets", (int32_t)uac.rate_sets);
 #endif
 #if SMK_UAC_IN_PROBE

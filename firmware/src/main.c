@@ -219,6 +219,12 @@ static int replug_pending(void) { return 0; }   /* (the probe: no re-plug) */
 #else
 #define SMK_HP_FADER(i, w, u) 0
 #endif
+/* the LEVEL faders' law (harmoniser-spec.md §13b, signed off 2026-11-15): position 0 off, 1..100 -> -40..0 dB, 101..127
+ * -> 0..+2 dB, as a map from the fader to the value (a project's values, MIDI, the encoders: untouched). LEVEL is 0.5 dB a
+ * step (112 = 0 dB); the drums' level is linear (100 at the fader's 100): the same dB */
+static const uint8_t SMK_LVL_LAW[128] = {0,32,33,34,34,35,36,37,38,38,39,40,41,42,43,43,44,45,46,47,47,48,49,50,51,51,52,53,54,55,55,56,57,58,59,59,60,61,62,63,64,64,65,66,67,68,68,69,70,71,72,72,73,74,75,76,76,77,78,79,80,80,81,82,83,84,85,85,86,87,88,89,89,90,91,92,93,93,94,95,96,97,97,98,99,100,101,101,102,103,104,105,106,106,107,108,109,110,110,111,112,112,112,112,113,113,113,113,113,113,113,114,114,114,114,114,114,115,115,115,115,115,115,115,116,116,116,116};
+static const uint8_t SMK_DRL_LAW[128] = {0,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,4,4,4,4,4,4,5,5,5,5,6,6,6,6,7,7,7,8,8,8,9,9,10,10,11,11,12,13,13,13,14,15,16,16,17,18,19,20,21,21,22,24,25,27,27,28,30,32,33,33,35,38,40,42,42,45,47,50,53,53,56,60,63,67,71,71,75,79,84,89,89,94,100,100,100,100,106,106,106,106,106,106,106,112,112,112,112,112,112,119,119,119,119,119,119,119,126,126,126,126};
+#define SMK_LAW(f, drum) ((drum) ? SMK_DRL_LAW[(f) & 127u] : SMK_LVL_LAW[(f) & 127u])
 static void smk_faders(void)
 {
     static uint8_t last[4] = {0xFF, 0xFF, 0xFF, 0xFF};
@@ -248,6 +254,8 @@ static void smk_faders(void)
             int32_t t = clamp(*tv - d->min, 0, 127), p = last[i], q = (int32_t)(v > 127u ? 127u : v);
             last[i] = (uint8_t)v;
             smk_fpos[i] = (uint8_t)q;
+            if (smk_fbank % FB_N == 0u)                   /* (LEVEL: its law, so the pickup compares values) */
+                p = SMK_LAW((uint32_t)p, i == TRK_DRUM), q = SMK_LAW((uint32_t)q, i == TRK_DRUM);
             if (d->max == d->min) {                       /* (nothing to set: HARMONY's T1 on B, D, F) */
                 if (!SMK_HP_FADER(i, 0, 0))
                     fb_touch();
@@ -308,7 +316,7 @@ static void smk_faders(void)
 #endif
         default:
             pv = i == TRK_DRUM ? &song.g[G_DRLVL] : &trk[i].p[P_LEVEL];
-            *pv = (int16_t)v;
+            *pv = (int16_t)SMK_LAW(v > 127u ? 127u : v, i == TRK_DRUM);   /* (§13b's law) */
             break;
         }
         if (!SMK_HP_FADER(i, 0, 0))
@@ -539,7 +547,7 @@ UI_SMALL static void fm1_main(void)
                     }
                     shown = a;
                 }
-                song.master_q12 = smk_master_q12(k10, lim_classic);   /* (HOME menu > AUDIO > LIMITER: its knob law, fx.c) */
+                song.master_q12 = smk_master_q12(k10, LIM_CLS);   /* (HOME menu > AUDIO > LIMITER: its knob law, fx.c; HARMONY: SOFT) */
 #else
                 song.master_q12 = (k10 * k10) >> 8;            /* 0 .. ~4096 */
 #endif

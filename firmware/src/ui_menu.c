@@ -213,6 +213,10 @@ UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
     }
     if (i == MI_VMODE && hm_on)                         /* (HARMONY on: the vocoder off) */
         return line ? "HARMONY ON" : "LOCKED:";
+#ifdef SMK_HARM
+    if (i == MI_LIMIT && hm_on && lim_classic)          /* (fx.c LIM_CLS: CLASSIC back when HARMONY goes off) */
+        return line ? "HARMONY ON" : "SOFT WHILE";
+#endif
     if (i == MI_SPAIR) {                                /* (SYNTHS+RET only; the return mono where the source was) */
         static const char *const CH[SP_N] = {"", "ON CH 4", "ON CH 1", "ON CH 2", "ON CH 3"};
         if (usb_layout != UL_SYNTHS)
@@ -339,7 +343,15 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         str_cpy(b + str_len(b), " CHANGED", 9);
         return b;
     }
-    case MI_LIMIT: return lim_classic ? "CLASSIC" : "SOFT";
+    case MI_LIMIT:
+#ifdef SMK_HARM
+        if (lim_classic && hm_on) {                   /* HARMONY forces SOFT (fx.c LIM_CLS; harmoniser-spec.md §13d):
+                                                       * amber, CLASSIC kept for when HARMONY goes off */
+            *c = C_AMB;
+            return "SOFT";
+        }
+#endif
+        return lim_classic ? "CLASSIC" : "SOFT";
     case MI_LAYOUT: return UL_MENU_NAME[usb_layout % UL_N];   /* (usb.c: at the next start) */
     case MI_SFX: {                                    /* the stems' effects: the SLICER's STUT, or the punch-ins */
         static const char *const N[SFX_N] = {"SLICER", "PUNCH", "PUNCH HQ"};
@@ -803,6 +815,9 @@ UI_SMALL static void draw_menu(void)
                 else if (i == MI_SRATE || i == MI_SFILT
 #if SMK_UAC_IN_PROBE
                          || i == MI_VINL || i == MI_VINR || i == MI_VCARR || i == MI_SPAIR || (i == MI_VMODE && hm_on)
+#ifdef SMK_HARM
+                         || (i == MI_LIMIT && hm_on && lim_classic)
+#endif
 #endif
                          ) {                    /* (STEREO PAIR and MODE's lock: their guides were set, never drawn) */
                     uint16_t gc = vc == C_HI ? C_GRAY : C_DIM;

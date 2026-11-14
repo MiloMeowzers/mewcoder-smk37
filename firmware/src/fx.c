@@ -132,7 +132,12 @@ static struct {                                 /* the block's tail in flight (m
  * CLASSIC: SLOOP's, LIM_T and the knob as the FM-1's pot. tests/smk_mix_test.c */
 #define LIM_T_SOFT 36000
 static uint8_t lim_classic;                     /* 0 SOFT, 1 CLASSIC (settings: project.c midi_part_fill) */
-#define LIM_TH (lim_classic ? LIM_T : LIM_T_SOFT)
+#ifdef SMK_HARM
+#define LIM_CLS (lim_classic && !hm_on)         /* HARMONY forces SOFT (harmoniser-spec.md §13d): the threshold and the knob */
+#else
+#define LIM_CLS lim_classic
+#endif
+#define LIM_TH (LIM_CLS ? LIM_T : LIM_T_SOFT)
 static uint32_t smk_master_q12(uint32_t k10, uint32_t classic)   /* the MASTER knob 0..1023 -> song.master_q12 */
 {
     uint32_t q = (k10 * k10) >> 8;              /* (the FM-1's law: 0 .. ~4096) */
@@ -913,8 +918,23 @@ static inline int32_t hm_kd(uint32_t k)
     uint32_t a = k == HL_VOICE ? 100u : (hm_send[k & 3u] > 100u ? 100u : hm_send[k & 3u]);
     return 32768 - (32768 - hb.kd) * (int32_t)a / 100;   /* (<= 3.3 M: 32 bits) */
 }
+/* the insert order (harmoniser-spec.md §13e, the owner's choice 2026-11-14): track -> chain -> lane -> LEVEL -> pan /
+ * sends / stem / mix. A lane track's LEVEL (its glide) and mute x DUCK act on the lane's output, the dry share and the
+ * voices, so bank F alone drives the lane, the fader sets the result, and the fader down cuts the harmony's tail too */
+typedef struct {
+    int32_t l0, dl;                                     /* LEVEL, Q12, its glide over the block (dl a sample) */
+    int32_t ga, gb;                                     /* mute x DUCK, Q15, the block's start, end */
+} hm_post_t;
+static inline int32_t hm_post(int32_t x, int32_t lv, int32_t g)   /* (as the chain's: LEVEL, then mute x DUCK) */
+{
+    x = MULQ12R(x, lv, 2);
+    if (g < 32767)
+        x = MULQ12R(x, g >> 3, 4);
+    return x;
+}
 static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, int32_t gl0, int32_t dgl, int32_t gr0,
-                      int32_t dgr, int32_t c, int32_t d, int32_t r, int32_t xmax, int32_t *st)
+                      int32_t dgr, int32_t c, int32_t d, int32_t r, int32_t xmax, int32_t *st, const hm_post_t *pg,
+                      int32_t *pk)
 {
     int32_t(*wb)[VOC_MAXN] = hm_wb[mx != &acc[0]];
     int32_t *in = wb[0], *wl = wb[1], *wr = wb[2], sg = k ? HM_GAIN(hm_send[k & 3u]) : 32768, kd = hm_kd(k);
@@ -930,7 +950,11 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
         pl = stem_pl, pr = stem_pr;
 #endif
     for (i = 0; i < n; i++) {
-        int32_t xd = hm_sc(x[i], kd), vl = VOC_VS(wl[i]), vr = VOC_VS(wr[i]), m = xd + ((vl + vr) >> 1), xs, gl, gr, ol, orr;
+        int32_t lv = pg->l0 + pg->dl * (int32_t)i, g = pg->ga + (((pg->gb - pg->ga) * (int32_t)i) >> CTL_LOG2);
+        int32_t xd = hm_post(hm_sc(x[i], kd), lv, g), vl = hm_post(VOC_VS(wl[i]), lv, g), vr = hm_post(VOC_VS(wr[i]), lv, g);
+        int32_t m = xd + ((vl + vr) >> 1), xs, gl, gr, ol, orr, a = m < 0 ? -m : m;
+        if (a > *pk)
+            *pk = a;                                    /* (the track's meter: what it sends on, after its fader) */
         if (st)
             st[i] = m;                                  /* its stem: the dry and the voices, mono */
         xs = clamp(m, -xmax, xmax);
@@ -950,9 +974,21 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
 }
 /* a track with its lane on that plays nothing this block (no voice, its tail run out): the lane runs on (its feedback
  * and REPEAT go on sounding), fed the stems' punch-in replay if one plays, else silence */
-static void hm_quiet(track_t *t, uint32_t k, uint32_t n, mixacc_t *mx, int32_t *b, int on)
+static void hm_quiet(track_t *t, uint32_t k, uint32_t n, mixacc_t *mx, int32_t *b, int32_t g0, int32_t g1)
 {
     int32_t pan = t->p[P_PAN], gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
+    int on = (g0 | g1) != 0;
+    int32_t pk = t->peak;
+    hm_post_t pg;
+    {   /* LEVEL glides here too (the fader acts on the tail; §13e), as mix_part_run's */
+        int32_t lvl = expr_gain(LEVEL_Q12[t->p[P_LEVEL] ? clamp(t->p[P_LEVEL] + t->p[P_ED_FX], 1, 127) : 0], k), l0;
+        if (!t->mix_on)
+            t->lvl = lvl, t->gpl = gl, t->gpr = gr, t->mix_on = 1;
+        l0 = t->lvl;
+        t->lvl = mix_glide(l0, lvl);
+        pg.l0 = l0, pg.dl = (t->lvl - l0) >> CTL_LOG2;
+        pg.ga = mulq15(g0, duck.g0), pg.gb = mulq15(g1, duck.g1);
+    }
     int32_t c = t->p[P_CHOR] * 258, d = k ? send_thr(t->p[P_DLY] * 258, thr_dly) : 0, r = send_thr(t->p[P_REV] * 258, thr_rev);
     int32_t xmax = c > d ? c : d, *st = 0;
     uint32_t i;
@@ -973,7 +1009,8 @@ static void hm_quiet(track_t *t, uint32_t k, uint32_t n, mixacc_t *mx, int32_t *
         b[i] = 0;
 #endif
     xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);
-    hm_insert(k, b, n, mx, gl, 0, gr, 0, c, d, r, xmax, st);
+    hm_insert(k, b, n, mx, gl, 0, gr, 0, c, d, r, xmax, st, &pg, &pk);
+    t->peak = pk;
 }
 #endif
 static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
@@ -991,7 +1028,7 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             ins_rest(t);                                /* TYPE OFF while silent: no fade-out left for the next note */
 #ifdef SMK_HARM
         if (HM_LANE_ON((uint32_t)(t - trk))) {
-            hm_quiet(t, (uint32_t)(t - trk), n, mx, b, (g0 | g1) != 0);
+            hm_quiet(t, (uint32_t)(t - trk), n, mx, b, g0, g1);
             return;
         }
 #endif
@@ -1063,25 +1100,17 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         int32_t *ppl = SP_ON(SP_T1 + (uint32_t)(t - trk)) ? stem_pl : 0, *ppr = stem_pr;
 #endif
 #ifdef SMK_HARM
-        if (HM_LANE_ON((uint32_t)(t - trk))) {          /* its lane: the signal as below (LEVEL, mute, the punch-in),
-                                                         * then through the lane to the pan, sends and stem */
-            for (i = 0; i < n; i++) {
-                int32_t lv = lvl0 + dl * (int32_t)i, x = MULQ12R(b[i], lv, 2), a;
-                int32_t g = ga + (((gb - ga) * (int32_t)i) >> CTL_LOG2);
-                if (g < 32767) {
-                    g >>= 3;
-                    x = MULQ12R(x, g, 4);
-                }
+        if (HM_LANE_ON((uint32_t)(t - trk))) {          /* its lane (§13e, the insert order): the chain's output (the
+                                                         * punch-in) through the lane; LEVEL, mute x DUCK after it, then
+                                                         * the pan, sends and stem (hm_insert) */
+            hm_post_t pg;
+            pg.l0 = lvl0, pg.dl = dl, pg.ga = ga, pg.gb = gb;
 #if BOARD_SMK37
-                if (tp_on)
-                    x = tp_x((uint32_t)(t - trk) % NPART, i, x);
+            if (tp_on)
+                for (i = 0; i < n; i++)
+                    b[i] = tp_x((uint32_t)(t - trk) % NPART, i, b[i]);
 #endif
-                a = x < 0 ? -x : x;
-                if (a > pk)
-                    pk = a;
-                b[i] = x;
-            }
-            hm_insert((uint32_t)(t - trk), b, n, mx, gl0, dgl, gr0, dgr, c, d, r, xmax, st);
+            hm_insert((uint32_t)(t - trk), b, n, mx, gl0, dgl, gr0, dgr, c, d, r, xmax, st, &pg, &pk);
             TIM_LAP(TS_M1 + (uint32_t)(t - trk) % NPART, tc);
             t->peak = pk;
             return;
@@ -1471,21 +1500,40 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
             uint32_t i;
             for (i = 0; i < n; i++)
                 z[0][i] = mx->l[i], z[1][i] = mx->r[i], z[2][i] = mx->sr[i], z[3][i] = mx->sd[i];
+#ifdef SMK_HARM
+            drums_unity = (uint8_t)(lane && n <= VOC_MAXN);   /* (§13e: the kit at DRUMS 100 into its lane) */
+#endif
             mix_drums(n, mx);
 #ifdef SMK_HARM
+            drums_unity = 0;
             if (lane && n <= VOC_MAXN) {                /* their lane: the kit's mono sum in; the dry kit at its own
-                                                         * pans (hb.kd), the voices at theirs; the sends the dry's */
+                                                         * pans (hb.kd), the voices at theirs; the sends the dry's; then
+                                                         * DRUMS's level on all of it (§13e: the fader after the lane) */
+                static int32_t dpg = -1;                /* DRUMS's level after the lane, Q15 (100 = 32768), its glide */
                 int32_t(*wb)[VOC_MAXN] = hm_wb[mx != &acc[0]];
-                int32_t *in = wb[0], *wl = wb[1], *wr = wb[2], sg = HM_GAIN(hm_send[3]), kd = hm_dkd = hm_kd(HL_DRUM);
+                int32_t *in = wb[0], *wl = wb[1], *wr = wb[2], sg = HM_GAIN(hm_send[3]), kd = hm_kd(HL_DRUM);
+                int32_t dt = song.g[G_DRLVL] * 32768 / 100, d0, dd;
+                uint32_t v, sep = stem_feed && (stem_layout == 1u || stem_layout == 3u);   /* (§13l-1: the voices
+                                                         * apart only for DRUMS+RET / ALL DRY's drum channels; wl / wr the
+                                                         * same either way, hm_lane) */
+                if (dpg < 0)
+                    dpg = dt;
+                d0 = dpg, dpg = mix_glide(d0, dt), dd = (dpg - d0) >> CTL_LOG2;
+                hm_dkd = hm_sc(kd, dpg);                /* (the tail's group stems: the dry at its share, after DRUMS) */
                 for (i = 0; i < n; i++)
                     in[i] = hm_in(((mx->l[i] - z[0][i]) >> 1) + ((mx->r[i] - z[1][i]) >> 1), sg);
-                hm_lane(HL_DRUM, in, wl, wr, hm_dwv, n);
+                hm_lane(HL_DRUM, in, wl, wr, sep ? hm_dwv : 0, n);
                 for (i = 0; i < n; i++) {
-                    int32_t ol = hm_sc(mx->l[i] - z[0][i], kd) + VOC_VS(wl[i]), orr = hm_sc(mx->r[i] - z[1][i], kd) + VOC_VS(wr[i]);
-                    mx->sr[i] = z[2][i] + hm_sc(mx->sr[i] - z[2][i], kd);
-                    mx->sd[i] = z[3][i] + hm_sc(mx->sd[i] - z[3][i], kd);
+                    int32_t g = d0 + dd * (int32_t)i;
+                    int32_t ol = hm_sc(hm_sc(mx->l[i] - z[0][i], kd) + VOC_VS(wl[i]), g);
+                    int32_t orr = hm_sc(hm_sc(mx->r[i] - z[1][i], kd) + VOC_VS(wr[i]), g);
+                    mx->sr[i] = z[2][i] + hm_sc(hm_sc(mx->sr[i] - z[2][i], kd), g);
+                    mx->sd[i] = z[3][i] + hm_sc(hm_sc(mx->sd[i] - z[3][i], kd), g);
                     mx->l[i] = z[0][i] + ol, mx->r[i] = z[1][i] + orr;
                     hm_dm[i] = (ol >> 1) + (orr >> 1);  /* (SYNTHS+RET's DRUMS channel) */
+                    if (sep)
+                        for (v = 0; v < 3u; v++)
+                            hm_dwv[v][i] = hm_sc(hm_dwv[v][i], g);   /* (the voices' drum channels, after DRUMS too) */
                 }
                 hm_dran = 1;
             }
@@ -2179,7 +2227,9 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
             master_pre(&ol[i], &orr[i]);
             if ((i & 1u)) {                             /* the visualiser: every other sample, as audio.c reads it */
                 vis_tap[2u * i] = (int16_t)knee(mix_l[i]);
+#if !SMK_VOC_LEAN                                       /* (the vocoder build: no visualiser, only graph_scope's left) */
                 vis_tap[2u * i + 1u] = (int16_t)knee(mix_r[i]);
+#endif
             }
             if (usb_full_now) {                         /* USB AUDIO = FULL: MASTER all the way up (4096) */
                 ul[i] = mix_l[i], ur[i] = mix_r[i];     /* (#4: x 4096 / 4096, every bit; it was floored to 4 LSB) */

@@ -75,6 +75,14 @@ static int32_t ds_buf[CTL];
 /* (2.7) LEVEL and PAN glide: a knob's detent (or a new sound's trim) moves a quarter of the way each block of CTL
  * samples (0.73 ms), ~3 ms in all, instead of a step a detent (after JIANT FM 0.6.8, github.com/juanjiant-bit/JIANT:
  * "LEVEL and PAN glide (~3 ms) instead of stepping at each knob move"). The last few units: at once */
+#if SMK_UAC_IN_PROBE && BOARD_SMK37         /* (= SMK_HARM, defined later by smk_harm.h) */
+static uint8_t drums_unity;              /* the drum lane runs (fx.c mix_units): the kit and the click at their nominal
+                                          * level (DRUMS 100) into it; DRUMS's level after the lane (harmoniser-spec.md
+                                          * §13e) */
+#define DRUMS_LVL() (drums_unity ? 100 : song.g[G_DRLVL])
+#else
+#define DRUMS_LVL() song.g[G_DRLVL]
+#endif
 static int32_t mix_glide(int32_t from, int32_t to)
 {
     int32_t d = to - from;
@@ -230,7 +238,7 @@ static void click_render(int32_t *ml, int32_t *mr, uint32_t n)
     int32_t g;
     if (!click.env)
         return;
-    g = (int32_t)((int64_t)click.gain * song.g[G_DRLVL] / 100);
+    g = (int32_t)((int64_t)click.gain * DRUMS_LVL() / 100);
     for (i = 0; i < n; i++) {
         int32_t v = (int32_t)(((int64_t)sine_i(click.ph) * (click.env >> 15) >> 15) * g >> 15);
         ml[i] += v;
@@ -411,7 +419,7 @@ static void drum_on(uint32_t note, uint32_t vel)
 static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dly, int32_t *mono, uint32_t n)
 {
     uint32_t k, i;
-    int32_t lvl = expr_gain(song.g[G_DRLVL] * 200, TRK_DRUM), send = send_thr(song.g[G_DRREV] * 258, thr_rev),
+    int32_t lvl = expr_gain(DRUMS_LVL() * 200, TRK_DRUM), send = send_thr(song.g[G_DRREV] * 258, thr_rev),
             dsend = send_thr(song.g[G_DRDLY] * 258, thr_dly), pk = drums.peak;   /* (2.6: the THROWs) */
     int32_t pan = trk[TRK_DRUM].p[P_PAN], gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
     if (!drums.gon)                                 /* (2.7) LEVEL and PAN glide, block by block (mix_glide) */

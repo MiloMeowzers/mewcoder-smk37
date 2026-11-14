@@ -180,6 +180,15 @@ static struct {
     uint32_t adj_up, adj_down;                   /* packets one frame longer / shorter than the pattern */
     uint32_t fill_lo, fill_hi;                   /* range of fill_min since the stream started */
     uint32_t rate_sets;                          /* SET_CUR sampling frequency requests */
+#if UAC6
+    volatile uint8_t recentre;                   /* the render found the ring full: the next packet moves the reader
+                                                  * to the band's middle (harmoniser-spec.md §13d; the reader is the
+                                                  * ISR's, so the render only asks) */
+    uint16_t fr_arm;                             /* the SIE frame the last packet was queued in (§13k) */
+    uint32_t recentres;                          /* .. times it did */
+    uint32_t skips;                              /* frames a queued packet sat through untaken (§13k: the host did not
+                                                  * ask, or the answer missed the frame) */
+#endif
 } uac;
 #if SMK_UAC_IN_PROBE
 /* the frames received (16-bit L | R << 16), the host's 48 kHz: written by uin_rx (TIMER5); read by the loopback
@@ -1576,6 +1585,8 @@ static int uac6_room(uint32_t n)
         return 0;
     if (UA_N - (ua_w - ua_r) < n + n / 8u + 2u) {       /* nobody reads: drop the block */
         uac.overruns++;
+        uac.recentre = 1;                               /* (and the reader recentres: room again from the next block, not
+                                                         * a drop every block while the host runs slow) */
         return 0;
     }
     return 1;
@@ -1623,11 +1634,23 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
             uac6_fir(ch, n, m0, m1, c_lo, c_hi, &r6_taps[0][0], UAC_FIR_N);
         return;
     }
+    uint32_t live = 0;                                  /* (the channels with sound this block: a silent one is zero
+                                                         * frames without the scale, harmoniser-spec.md §13l-5) */
+    for (c = c_lo; c < c_hi; c++) {
+        int32_t o = 0;
+        for (i = 0; i < n; i++)
+            o |= ch[c][i];
+        live |= (o != 0) << c;
+    }
     for (i = 0; i < n; i++) {                           /* STEM RATE 44.1: a frame a sample, at the filter's level */
         int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
         uint8_t *f = u6_ring + ((w + i) & (UA_N - 1u)) * U6_FB + 3u * c_lo;
         for (c = c_lo; c < c_hi; c++, f += 3) {
             int32_t x = ch[c][i] >> 1, v;
+            if (!((live >> c) & 1u)) {
+                f[0] = f[1] = f[2] = 0;
+                continue;
+            }
             x = x > 262143 ? 262143 : x < -262144 ? -262144 : x;
             v = (x * m) >> 6;
             v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
@@ -1785,6 +1808,13 @@ static uint32_t uac6_ring_packet(uint8_t *d)
     }
     r = ua_r;
     fill = ua_w - r;
+    if (uac.recentre) {                                 /* the ring ran full: skip the oldest, back to the band's middle */
+        uint32_t t = (lo + hi) / 2u;
+        if (fill > t)
+            r = ua_w - t, fill = t;
+        uac.recentre = 0;
+        uac.recentres++;
+    }
     RING_PUBLISH();                                     /* the slots after the index */
     k = fill < n ? fill : n;
     for (i = 0; i < k; i++)
@@ -2105,6 +2135,14 @@ static void uac_service(void)
             uac.missed++;                               /* UnderRun: an IN token found nothing queued */
         uac.flowing = 1;
     }
+#if UAC6
+    if (uac6_on) {                                      /* (§13k: the frames a queued packet sat through) */
+        uint16_t f = (uint16_t)(sie_rd(S_FRAME1) | (sie_rd(S_FRAME2) & 7u) << 8), d = (uint16_t)((f - uac.fr_arm) & 2047u);
+        if (uac.queued && d >= 2u && d < 64u)
+            uac.skips += d - 1u;
+        uac.fr_arm = f;
+    }
+#endif
     uac.queued = 1;
     uac.wait = 0;
 #if UAC6
