@@ -1569,12 +1569,15 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                                                          * of this set's sums (the metronome's too), as one track's */
             static int32_t z[4][CTL] __attribute__((section(".pool")));
             uint32_t i;
+            TIM_VOC_T(td);                              /* (Build 1.2: the drums' unit inside, console d_kit / d_pre /
+                                                         * d_post) */
             for (i = 0; i < n; i++)
                 z[0][i] = mx->l[i], z[1][i] = mx->r[i], z[2][i] = mx->sr[i], z[3][i] = mx->sd[i];
 #ifdef SMK_HARM
             drums_unity = (uint8_t)(lane && n <= VOC_MAXN);   /* (§13e: the kit at DRUMS 100 into its lane) */
 #endif
             mix_drums(n, mx);
+            TIM_LAP(TS_DKIT, td);
 #ifdef SMK_HARM
             drums_unity = 0;
             if (lane && n <= VOC_MAXN) {                /* their lane: the kit's mono sum in; the dry kit at its own
@@ -1602,7 +1605,16 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                     in[i] = hm_in(kx, 32768);           /* (§13o: at unity) */
                     loud |= (uint32_t)(kx > 8 || kx < -8);
                 }
-                if (!hm_lane(HL_DRUM, in, wl, wr, sep ? hm_dwv : 0, n) && !loud) {   /* the lane asleep, the kit silent
+                TIM_LAP(TS_DPRE, td);
+                {
+                    uint32_t ran = hm_lane(HL_DRUM, in, wl, wr, sep ? hm_dwv : 0, n);
+#if SMK_TIMING
+                    td = TIM_NOW();                     /* (the lane's own time: ln_d) */
+#endif
+                    if (ran)
+                        loud = 1;
+                }
+                if (!loud) {   /* the lane asleep, the kit silent
                                                          * (the drums stopped; the metronome would count as sound): its
                                                          * dry and sends under the floor, left as they are; its stem
                                                          * silence */
@@ -1627,6 +1639,7 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                             hm_dwv[v][i] = hm_sc(hm_dwv[v][i], gw);   /* (the voices' drum channels, after DRUMS too) */
                 }
                 hm_dran = 1;
+                TIM_LAP(TS_DPOST, td);
             }
 drum_lane_done:
 #endif

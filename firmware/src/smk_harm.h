@@ -148,7 +148,12 @@ typedef struct {
                                       * block from there to this block's (a fader step is no gain step on the audio) */
     int32_t rkd, rsg;                /* the dry's share and bank F's send (the mixer's: fx.c hm_insert, mix_units) */
     uint16_t quiet;                  /* blocks its input, voices and feedback have all been silent (§13f) */
+    int32_t lg;                      /* its input limiter's gain, Q15 (0: not started; harmoniser-spec.md §13q) */
 } hm_lane_t;
+/* a lane's input limiter (§13q): a hot source (T2's pre-fader FM6) is turned down to HM_LIM instead of hard-clipped at
+ * full scale; a block's peak is known before it plays, so the gain drops at once for the block (no clip) and comes back
+ * over ~90 ms. Under HM_LIM the gain is 32768: the input exactly as before */
+#define HM_LIM 29204                     /* -1 dBFS */
 /* skip silent work (harmoniser-spec.md §13f): a lane whose input, voices and feedback have stayed under HM_QTHR (int16
  * scale: ~-80 dB) for longer than its memory (HM_LEN: 320 ms) does nothing until its input wakes it; REPEAT holds it
  * awake. Everything it would have made is under -80 dB, so the output is silence either way */
@@ -546,6 +551,22 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
     L->rwg = wg, L->rfb = fbk, L->rig = ig;
     {
         const int32_t wg1 = wg, fb1 = fbk, ig1 = ig;
+        int32_t lg0 = L->lg ? L->lg : 32768, lg1;
+        {   /* (§13q: the block's peak after INPUT LEVEL, the limiter's gain for it) */
+            int32_t im = ig0 > ig1 ? ig0 : ig1, pkb = 0, t;
+            uint32_t m = n > VOC_MAXN ? VOC_MAXN : n;
+            for (i = 0; i < m; i++) {
+                int32_t a = (in[i] * im) >> 12;
+                a = a < 0 ? -a : a;
+                pkb = a > pkb ? a : pkb;
+            }
+            t = pkb > HM_LIM ? (int32_t)(((int64_t)HM_LIM << 15) / pkb) : 32768;
+            if (t < lg0)
+                lg0 = lg1 = t;                          /* (down at once: no sample of the block over HM_LIM) */
+            else
+                lg1 = lg0 + ((t - lg0) >> 7) + (t > lg0); /* (back up over ~90 ms) */
+            L->lg = lg1;
+        }
     mr = mw = L->mem;
     if (n > VOC_MAXN)
         n = VOC_MAXN;
@@ -600,7 +621,10 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                                                          * value as before, bit for bit) */
             fbk = fb0 + (((fb1 - fb0) * (int32_t)i) >> 5);
             ig = ig0 + (((ig1 - ig0) * (int32_t)i) >> 5);
-            x = clamp((in[i] * ig) >> 12, -32767, 32767);   /* (INPUT LEVEL) */
+            x = (in[i] * ig) >> 12;                      /* (INPUT LEVEL) */
+            if (lg0 < 32768 || lg1 < 32768)             /* (§13q: the limiter, only while it acts) */
+                x = (int32_t)(((int64_t)x * (lg0 + (((lg1 - lg0) * (int32_t)i) >> 5))) >> 15);
+            x = clamp(x, -32767, 32767);
             if (t & 1u) {                               /* (the meters: once a pair, §12) */
                 ax = x < 0 ? -x : x;
                 pk = ax > pk ? ax : pk;
