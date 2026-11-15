@@ -817,9 +817,15 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
         ed_b(NTRK);                                       /* v3 */
         ed_b(ED_PROTO);                                   /* v5..: the protocol version (9: FM6 patches, 10: SYN kits) */
 #if BOARD_SMK37
-        ed_b(ED_BUILD);                                   /* the build: bit 0 SMK-37 (backup objects 12, 13), bit 1 the
-                                                       * vocoder (14; T3 is VOCODER / AUDIO, no engine of its own); an
-                                                       * FM-1 or an older device sends no byte */
+#ifdef SMK_HARM
+        ed_b(ED_BUILD | 4u | (hm_on ? 8u : 0u));          /* the build: bit 0 SMK-37 (backup objects 12, 13), bit 1 the
+                                                       * vocoder (14; T3 is VOCODER / AUDIO, no engine of its own), bit 2
+                                                       * the harmoniser, bit 3 HARMONY on now (T1 the harmoniser, the
+                                                       * vocoder off: harmoniser-spec.md §13x); an FM-1 or an older device
+                                                       * sends no byte */
+#else
+        ed_b(ED_BUILD);
+#endif
 #endif
         break;
     case ED_GET:

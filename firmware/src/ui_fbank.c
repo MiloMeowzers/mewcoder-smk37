@@ -55,6 +55,31 @@ static int fb_left(void)                           /* drawn last frame, not now:
     return l;
 }
 
+#if SMK_UAC_IN_PROBE
+/* LANE RATE (bank E column 4, harmoniser-spec.md §13x): the fader shows the four lanes' settings (HOME > LANE RATE):
+ * all 22K, all 44.1K, or MIXED (dim: it sets nothing until the lanes agree). A change made in the menu leaves the fader
+ * waiting to pick up its new value (the place kept in its half, else the half's middle) */
+static uint8_t fb_lr_seen = 0xFFu;
+static int fb_lrate(void)                              /* 1 all 22K, 0 all 44.1K, -1 mixed */
+{
+    uint32_t r = hm_lrate & 15u;
+    int u = r == 15u ? 1 : r == 0u ? 0 : -1;
+    if (r != fb_lr_seen) {
+        if (fb_lr_seen != 0xFFu)
+            smk_flive &= (uint8_t)~8u;
+        fb_lr_seen = (uint8_t)r;
+    }
+    if (u >= 0 && (hm_r22v >= 64) != (u == 1))
+        hm_r22v = u ? 96 : 32;
+    return u;
+}
+static void fb_lrate_set(uint32_t v)                   /* the fader moved (main.c): every lane */
+{
+    hm_r22v = (int16_t)(v > 127u ? 127u : v);
+    hm_lrate = hm_r22v >= 64 ? 15u : 0u;
+    fb_lr_seen = hm_lrate;
+}
+#endif
 /* what fader i sets in bank b (main.c smk_faders) */
 static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
 {
@@ -70,8 +95,12 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
         if (i == 2u) {
             hv[0] = (int16_t)hm_send[0];
             *vp = &hv[0];
-        } else if (i == 3u) {                      /* LANE RATE: 44.1 / 22K, an A/B (harmoniser-spec.md §13s; WET / DRY
-                                                     * moved to F's T1 column, §13p) */
+        } else if (i == 3u) {                      /* LANE RATE: every lane 44.1 / 22K (§13x; WET / DRY moved to F's T1
+                                                     * column, §13p); the lanes set apart in the menu: dim, MIXED */
+            if (fb_lrate() < 0) {
+                *vp = &zero;
+                return &FB_NONE;
+            }
             *vp = &hm_r22v;
         } else {
             *vp = &hm_fb;
@@ -146,12 +175,12 @@ static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, 
                                                          * input, 0 off) */
         str_cpy(lab, SL[i & 3u], 10);
     }
-    if (d == &FB_NONE && b != 5u)
+    if (d == &FB_NONE && b != 5u && b != 4u)
         str_cpy(lab, "T1: HARM", 10);
 #endif
     param_format(d, **vp, val, &unit);
     if (d == &FB_NONE)
-        str_cpy(val, "--", sizeof val), unit = "";
+        str_cpy(val, b == 4u ? "MIXED" : "--", sizeof val), unit = "";
 #if SMK_UAC_IN_PROBE
     if (b == 4u && i == 0u) {                          /* PITCH in semitones (smk_harm.h hm_ratios: -24 .. +12) */
         int32_t f = **vp, t10 = f < 0 ? f * 240 / 64 : f * 120 / 63;

@@ -601,7 +601,8 @@ static void hp_console(const char *p)
         con_dec(hm_pad);
         con_puts(" voice-in ");
         con_dec(hm_send[0]);
-        con_puts(hm_r22 ? " rate 22K" : " rate 44.1");   /* (LANE RATE, bank E column 4: §13s) */
+        con_puts((hm_lrate & 15u) == 15u ? " rate 22K" : hm_lrate & 15u ? " rate mixed" : " rate 44.1");   /* (LANE
+                                                         * RATE: §13x) */
         con_putc(13);
         con_putc(10);
         con_puts("  voices (§13n, cleared): steals ");      /* (a held voice taken, faded; notes that waited; let go

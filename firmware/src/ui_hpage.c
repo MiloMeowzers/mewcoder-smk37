@@ -14,7 +14,7 @@
  * method, the sung note, REP; the function lights; the three voices (interval, MICRO, LEVEL, meter); the input lights,
  * FB, FB LIMIT, the EQ, WET / DRY, IN / OUT; the group's knobs. Everything drawn comes from one view (hp_view), and the
  * page is drawn again only when that view changes (the 1a lesson: a redraw signature built from what is drawn). Stage 2's
- * switches are drawn dim and say so when pressed. FADER BANK E's FEEDBACK and WET / DRY are the same values as K3 / K8:
+ * switches are drawn dim and say so when pressed. FADER BANK E's FEEDBACK and F's T1 MIX are the same values as K3 / K8:
  * a knob turn leaves that fader waiting to pick up. */
 #ifndef SMK_HARM
 #error "ui_hpage.c: the harmoniser (smk_harm.h)"
@@ -105,9 +105,9 @@ static void hp_panname(char *b, int32_t p)          /* a pan, "L20", "C", "R40" 
     b[0] = p < 0 ? 'L' : 'R';
     fmt_int(b + 1, p < 0 ? -p : p);
 }
-static void hp_unpick(uint32_t col)                 /* a knob set FADER BANK E's value: its fader waits to pick up */
+static void hp_unpick(uint32_t bank, uint32_t col)  /* a knob set a FADER BANK value: its fader waits to pick up */
 {
-    if (smk_fbank % FB_N == 4u)
+    if (smk_fbank % FB_N == bank)
         smk_flive &= (uint8_t)~(1u << col);
 }
 static uint32_t hp_vmask(void) { return hs.vsel ? 1u << ((hs.vsel - 1u) % 3u) : 7u; }   /* the VOICE-selected */
@@ -131,17 +131,18 @@ static void hp_turn(uint32_t k, int32_t s)
         if ((o < 0 && n > 0) || (o > 0 && n < 0))
             n = 0;
         hm_pitch = (int16_t)n;
-        hp_unpick(0u);
+        hp_unpick(4u, 0u);
         hp_pitch(b, n);
         str_cpy(b + str_len(b), " ST", 4);
         hp_say("PITCH", b[0] == ' ' ? b + 1 : b);
         return;
     }
-    if (k == 7u) {                                      /* K8, every group: WET / DRY (= bank E's F4) */
+    if (k == 7u) {                                      /* K8, every group: T1's MIX (= bank F's T1 column, §13p;
+                                                         * was bank E's F4, now LANE RATE: §13x) */
         hm_wd = (int16_t)clamp(hm_wd + s * f, 0, 127);
-        hp_unpick(3u);
+        hp_unpick(5u, 0u);
         hp_pct(b, (uint32_t)hm_wd);
-        hp_say("WET/DRY", b);
+        hp_say("T1 MIX", b);
         return;
     }
     if (g == 0u && k < 3u) {                            /* MICRO V1 .. V3 (a detent at 0) */
@@ -179,7 +180,7 @@ static void hp_turn(uint32_t k, int32_t s)
         hp_say("INPUT", b);
     } else if (g == 1u && k == 2u) {                    /* FB MAIN (= bank E's F2) */
         hm_fb = (int16_t)clamp(hm_fb + s * f, 0, 127);
-        hp_unpick(1u);
+        hp_unpick(4u, 1u);
         hp_pct(b, (uint32_t)hm_fb);
         hp_say("FEEDBACK", b);
     } else if (g == 1u && (k == 4u || k == 5u)) {       /* the feedback's LOW / HIGH EQ */
@@ -740,7 +741,7 @@ static void hp_paint(const hp_view_t *w)
             K[3] = "K6", N[3] = n4, V[3] = v3, KN[3] = 6;
             n = 4;
         }
-        K[n] = "K8", N[n] = "W/D", V[n] = k8, KN[n] = 8;
+        K[n] = "K8", N[n] = "MIX", V[n] = k8, KN[n] = 8;
         n++;
         for (m = 0; m < n; m++) {
             int32_t kw = text_w(&FONT_S, K[m]) + 4, iw = kw + 4 + text_w(&FONT_S, N[m]) + (V[m][0] ? 4 + text_w(&FONT_S, V[m]) : 0);

@@ -173,7 +173,12 @@ jobs:
           # web/make_site.py: the installer with its package (checked by its SHA-256 in the page) and the editor,
           # also as one file for the disk (webapp/editor/sloop-editor.html). The installer fetches its package, so
           # it is served from localhost (serve-installer.ps1), not opened as a file
-          v="2.8.4-smk37-$(git rev-parse --short HEAD)"
+          h=$(git rev-parse --short HEAD)
+          case "${{ github.ref_name }}" in       # (the build's name in its editor's file and the installer's version)
+            harmoniser) v="2.8.4-mewcoder-harmoniser-$h" ;;
+            mewcoder|uac-in) v="2.8.4-mewcoder-$h" ;;
+            *) v="2.8.4-smk37-$h" ;;
+          esac
           if [ "$VOC_ONLY" = true ]; then      # (the vocoder branch: its own package's site and editor)
             python3 web/make_site.py out/sloop-smk37-elite-vocoder.fwsc "$v" out/installer-elite > /dev/null
             mkdir -p out/installer-pro/webapp/editor

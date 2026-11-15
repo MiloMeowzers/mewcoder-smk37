@@ -72,14 +72,14 @@ static uint8_t hm_int;               /* HOME > HARMONY > INTERVALS: 0 FIXED (the
 static int16_t hm_pitch;             /* FADER BANK B, T1's fader: -64 .. 63 (0: x1; main.c smk_faders, its dead zone) */
 static int16_t hm_fb;                /* FB MAIN 0 .. 127 */
 static int16_t hm_wd = 64;           /* WET / DRY 0 .. 127 (64: half each, exactly) */
-static int16_t hm_r22v;              /* LANE RATE, FADER BANK E's column 4 (harmoniser-spec.md §13s): 0 .. 127, 64 and up
-                                      * 22K (every lane's voices once a pair); an A/B, not kept: 44.1 at power-on */
-static volatile uint8_t hm_r22;      /* .. as the audio reads it (main.c smk_faders sets both) */
+static int16_t hm_r22v;              /* LANE RATE, FADER BANK E's column 4 (harmoniser-spec.md §13x): the fader's place,
+                                      * 0 .. 127, 64 and up 22K; it sets every lane's LANE RATE (hm_lrate) at once, and
+                                      * shows them: dim, MIXED, while the lanes differ (ui_fbank.c fb_param) */
 /* the LANE settings (HOME > LANE THIN, LANE RATE, HARMONY > LANE MONO; harmoniser-spec.md §13v; kept: project.c vocset).
  * Bit k: lane k (VOICE, T2, T3, DRUMS) */
 #define HM_THIN_DEF 7u                /* LANE THIN: VOICE, T2, T3 may thin under load; the drums never (the owner) */
 static uint8_t hm_thin = HM_THIN_DEF;
-static uint8_t hm_lrate;             /* LANE RATE: 22K (the voices once a pair); bank E column 4 (hm_r22) on top */
+static uint8_t hm_lrate;             /* LANE RATE: 22K (the voices once a pair); bank E column 4 sets all four (§13x) */
 static uint8_t hm_lmono = 1u;        /* LANE MONO: while the stems stream, the lanes mono (a track on the pair stereo) */
 static volatile uint8_t hm_lmask;    /* .. this block's mono lanes (fx.c, before the units) */
 static uint8_t hm_pcap[3];           /* POLY CAP (HOME > POLY CAP, §13w-2): T1..T3's most voices while HARMONY or the
@@ -824,7 +824,7 @@ static uint32_t HM_RAMHOT hm_lane(uint32_t k, const int32_t *in, int32_t *wl, in
              * below takes them); an open voice's fade (32767) without its product, the same value. LANE RATE 22K: the
              * voices once a pair, at its second sample (the feedback's), each stepping two samples; the first sample the
              * mean of the last pair's and this pair's */
-            const uint32_t lim = lg0 < 32768 || lg1 < 32768, st = hm_r22 || ((hm_lrate >> (k % HL_N)) & 1u) ? 2u : 1u;
+            const uint32_t lim = lg0 < 32768 || lg1 < 32768, st = ((hm_lrate >> (k % HL_N)) & 1u) ? 2u : 1u;
 #define HM_VF(G, P, GT, DN, LG, PL, PR, UV, ST, M) do {                                                            \
                 int32_t p_, p2_, t1_, a1_, a2_, c_;                                                                 \
                 if (G != GT) {                                                                                      \

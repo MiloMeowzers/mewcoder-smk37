@@ -449,9 +449,9 @@ Use Mewcoder's own editor: [online](https://milomeowzers.github.io/sloop-smk37/m
   keyboard** applies and saves at once (stop the song first); **Read** loads what the keyboard has now; **Defaults**
   sets every value back (send it to keep it).
 - **The Vocoder tab** also has SETUP, IN L, IN R, TRIM L, TRIM R, ATTACK and RELEASE, and the harmoniser's HARMONY,
-  INTERVALS, CONTROL, INPUT LEVEL, FB LOW EQ, FB HIGH EQ and FB LIMIT (with a build that has them). It does not show
-  the lane settings or POLY CAP yet, and may show the vocoder as running while HARMONY is on: change those on the
-  keyboard ([HARMONISER.md A13](HARMONISER.md#a13-pre-release-known-limits)).
+  INTERVALS, CONTROL, INPUT LEVEL, FB LOW EQ, FB HIGH EQ and FB LIMIT (with a build that has them). On **Mewcoder +
+  Harmoniser** it is the **Vocoder · Harmony** tab, with a Harmoniser section holding every harmoniser setting, the
+  load settings and POLY CAP included ([HARMONISER.md A9](HARMONISER.md#a9-saving-the-editor-and-the-console)).
 - **The SMK-37 tab:** the HOME menu's SMK-37 settings, with GATE DELAY and CARRIER's saws (AUTO, 1 SAW, 2 SAWS).
 
 The editor reads these tabs once per connection and again after a restore. Press **Read** after you change something

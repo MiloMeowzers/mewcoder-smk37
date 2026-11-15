@@ -1,4 +1,4 @@
-# The harmoniser: user manual (SMK-37 Elite, Mewcoder build)
+# The harmoniser: user manual (SMK-37 Elite, Mewcoder + Harmoniser)
 
 > **This manual has two parts.** [Part A](#part-a-the-harmoniser-today) is what the pre-release build does (Stage 1:
 > the sound, the HARMONY page, the lanes across every track and the load settings, all checked on the unit; build 1.7.1).
@@ -122,12 +122,12 @@ While HARMONY is on, **FADER BANK** steps through six banks, A to F. The harmoni
 | F1 **PITCH** | every voice moved together: the middle 1:1 (a small dead zone holds it there), down to two octaves under, up to one over, shown in semitones. It works in FIXED and SCALE, on top of the keys: G4 held with PITCH at +2.0 plays a sixth. |
 | F2 **FEEDBACK** | the harmony fed back into the memory: each pass is shifted again, so a fifth up climbs in fifths, an octave down falls in octaves, a cascade that dies away. It always dies away: the loop's gain stays under 1, however high it is set (the H949's FB LIMIT, SAFE). |
 | F3 **VOICE IN** | the audio in's level into the harmoniser (79 % = 0 dB). |
-| F4 **LANE RATE** | **44.1K** (the bottom half) or **22K** (the top half): every lane's voices at half rate, an A/B for the load (about half the voices' work; a touch darker above 8 kHz). On top of each lane's own LANE RATE setting (A8.0): a lane is 22K if its setting or this fader says so. Not kept: 44.1K at power-on. |
+| F4 **LANE RATE** | **44.1K** (the bottom half) or **22K** (the top half) for **every lane at once**: it sets the four LANE RATE settings (A8.0), so it is an A/B for the load (22K: about half the voices' work; a touch darker above 8 kHz). The two always agree: a change in the menu shows on the fader (which then waits to pick up). With the lanes set apart in the menu (some 44.1K, some 22K) the fader is **dim** and reads **MIXED**: it does nothing until the lanes agree again, so a mixed setup is never overwritten by a touch. Kept, as the settings are. |
 
 **Bank F** (**LANE** on the screen): one **MIX** per track, **T1 included**: **0** the dry alone, **100** the harmony alone, in between a
 crossfade (dry = 1 - MIX, harmony = MIX), so a track keeps its level as you dial the harmony in. On T2, T3 and the drums
 **0 also switches the lane off** (no CPU). T1's column is your voice against its harmony (it was WET / DRY on bank E;
-the HARMONY page's K8 **W/D** is the same value). The labels read `T1: HARM`, `T2 LANE`, `T3 LANE`, `DRUM LANE`
+the HARMONY page's K8 **MIX** is the same value). The labels read `T1: HARM`, `T2 LANE`, `T3 LANE`, `DRUM LANE`
 ([A6](#a6-the-lanes-the-harmoniser-across-each-track-and-the-outputs)). On banks B and D, T1's column shows `T1: HARM`:
 the harmoniser has no filter and no delay send of its own.
 
@@ -276,7 +276,7 @@ neither HARMONY nor the vocoder runs). Right / left set a value, OCT+ toggles it
 |---|---|---|
 | **HARMONY > LANE MONO** | **WITH STEMS**, OFF | While the stems stream to the computer, each lane renders its three voices **mono** (summed, no SPREAD or voice pans) and the track sits at its own PAN in the main mix. A track on the STEREO PAIR stays stereo (its stem is). Saves the stereo work the mono stems throw away. OFF: the voices at their pans always |
 | **LANE THIN > VOICE, T2, T3, DRUMS** | ON, ON, ON, **OFF** | Under load (two halves in a row over 85 %) one **sounding** harmony voice is faded out, from the lane that has the fewest thinned so far, before any synth voice is shed. It comes back (faded in) after **2 s with no half over 85 %**, one at a time. The voice goes on in every lane where it is not thinned. OFF on the drums by default: no thinning on the drums |
-| **LANE RATE > VOICE, T2, T3, DRUMS** | **44.1K** each | **22K**: that lane's voices at half rate, about half its voices' work; the same pitch and level, a touch darker above 8 kHz. A synth bass or a voice may want 44.1K, a pad or a drum lane rarely misses it. Bank E's LANE RATE fader puts every lane on 22K on top, for an A/B |
+| **LANE RATE > VOICE, T2, T3, DRUMS** | **44.1K** each | **22K**: that lane's voices at half rate, about half its voices' work; the same pitch and level, a touch darker above 8 kHz. A synth bass or a voice may want 44.1K, a pad or a drum lane rarely misses it. Bank E's LANE RATE fader sets all four at once (and reads MIXED, dim, while they differ: A4) |
 | **POLY CAP > T1, T2, T3** | **OFF**, 1 .. 5 | While HARMONY or the vocoder runs, that track's synth plays **at most that many voices**: a note beyond it takes room from the track's own voices (a releasing one first, else the oldest held, faded as a steal). Off when neither runs. The quickest way to take a thick FM6 pad down. A value that does nothing shows dim, kept for when the engine or mode changes: **N/A** (T1 while it is the harmoniser, T3 as an audio track, a MONO / LEGATO / UNISON sound) or **NO EFFECT** (at or over the engine's own polyphony) |
 
 - **Kept:** LANE MONO, LANE THIN and LANE RATE over a power-off, with the harmoniser's settings. **POLY CAP** too, and
@@ -474,11 +474,15 @@ Some starting points (USB layout SYNTHS+RET):
 
 - **Kept over a power-off:** HARMONY on / off, INTERVALS, and IN L / IN R (with the vocoder's settings); bank E's
   PITCH, FEEDBACK and VOICE IN, bank F's MIX for every track, the HARMONY page's settings (A11), LANE MONO, LANE THIN
-  and LANE RATE; POLY CAP (also with each project slot, A8.0). Bank E's LANE RATE fader is not kept (44.1K at
-  power-on). A save from an earlier build loads what it does not have at its defaults (PITCH 0, FEEDBACK 0, VOICE IN
+  and LANE RATE (bank E's LANE RATE fader with them); POLY CAP (also with each project slot, A8.0). A save from an
+  earlier build loads what it does not have at its defaults (PITCH 0, FEEDBACK 0, VOICE IN
   0 dB, T1's MIX 50, the other MIX 0, POLY CAP OFF).
-- **The web editor** reads and restores the harmoniser's settings in the full backup (object 14, now 532 bytes; older
-  backups restore with the newer settings at their defaults). Its pages do not show the harmoniser fully yet (A13).
+- **The web editor** (the one with this build): the **Vocoder · Harmony** tab has a **Harmoniser** section with every
+  setting above (HARMONY, INTERVALS, LANE MONO, LANE THIN, LANE RATE, POLY CAP, bank E and F's values, CONTROL, INPUT
+  LEVEL, the feedback EQ, FB LIMIT, SPREAD); **Send to the keyboard** applies and saves them (stop the song first).
+  With HARMONY on, its track bar shows T1 as **HARMONY** and T3 as **AUDIO** (the vocoder off), and T1's sound
+  browser is locked, as on the keyboard. The full backup carries them (object 14, now 532 bytes; older backups restore
+  with the newer settings at their defaults).
 - **T1's pattern** (the intervals) is saved with the project as any track's notes.
 - **The console** (USB serial): `harm` (or `hprobe`) prints the harmoniser's state: the notes held, each voice's
   ratio, the sung note, PITCH, FEEDBACK, the balance and the peaks, who holds each voice (steals, waits and drops
@@ -546,7 +550,7 @@ them; each pad labelled with its job.*
 out of the cycle: TRACKS → HARMONY → PUNCH IN → TRACKS). **<** and **>** (or SELECT) step its three groups.
 The keys, PLAY, REC and OCT work as always; **NOTE REPEAT** is REPEAT here whatever track is selected.
 
-**On every group:** **K7 is PITCH** (bank E's F1) and **K8 W/D is T1's MIX** (bank F's T1 column): a knob turned leaves
+**On every group:** **K7 is PITCH** (bank E's F1) and **K8 MIX is T1's MIX** (bank F's T1 column): a knob turned leaves
 that fader waiting to pick up. K7 stops at 0 (unison) on the way through.
 
 **It stays up** (latched, no time-out) until you tap **PATCH** (on to PUNCH IN) or open something else: a layer, the
@@ -584,8 +588,8 @@ menu, another page.
   (the same knob on every group, so always here), and FB LIMIT (SAFE / H949) at the right. **OUT** in red beside the
   control method (top left) while IN / OUT bypasses.
 - **The knobs:** the group's knobs, each as a coloured tag (K1 / K5 blue, K2 / K6 green, K3 / K7 yellow, K4 / K8
-  orange, as the menu's) with its name and value beside it: G1 `K1-3 MICRO`, `K4-6 LEVEL`, `K8 W/D 50 %`; G2 `K1 IN 0`,
-  `K3 FB 30 %`, `K5 LO 0`, `K6 HI 0`, `K8 W/D`; G3 `K1 DRY`, `K2-4 LEVEL`, `K5 SPREAD`, `K6 PAN V2 L20`, `K8 W/D`. MICRO and LEVEL's values are in
+  orange, as the menu's) with its name and value beside it: G1 `K1-3 MICRO`, `K4-6 LEVEL`, `K8 MIX 50 %`; G2 `K1 IN 0`,
+  `K3 FB 30 %`, `K5 LO 0`, `K6 HI 0`, `K8 MIX`; G3 `K1 DRY`, `K2-4 LEVEL`, `K5 SPREAD`, `K6 PAN V2 L20`, `K8 MIX`. MICRO and LEVEL's values are in
   the voices' strips above. A knob turned shows its full value in the header.
 
 **G1 INTERVALS**
@@ -685,8 +689,6 @@ This is an **early testing build**. What is known and not finished:
 - **STEM FX with HARMONY on: low level and a late start** (the owner, 1.7.1): the punch-ins come in quiet (FREEZE barely
   audible) and with a short silence before they cut in. A host test cleared the punch-after-lane arithmetic itself
   (the same level and timing as before 1.6); the cause is being traced.
-- **The web editor** does not show the harmoniser's lane settings or POLY CAP, and its Vocoder tab can show the vocoder
-  as running while HARMONY is on. The full backup does carry and restore them (object 14). Change them on the keyboard.
 - **A latched interval pad waiting for a voice is dark**, like an unlatched one (a dim amber for "waiting" is planned),
   and the newest pad does not yet take a voice from the oldest latched pad: with three pads latched, a fourth waits.
 - **The busiest scenes still have a few late halves** (5-16 a 20 s window on the owner's heaviest scene): rare short
