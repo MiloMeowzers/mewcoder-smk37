@@ -92,7 +92,18 @@ static const int32_t FM6_STATICS[77] = {
     1984, 1896, 1808, 1411, 1367, 1234, 1146, 926, 837, 837, 705, 573, 573, 529, 441, 441};
 
 /* stage ix (0..3; 4 = done) of an envelope whose rates and levels are op[FP_R1..], op[FP_L1..] */
-static void fm6_env_advance(fm6_env_t *e, const uint8_t *op, uint32_t ix)
+/* FM6's render in RAM (smk37-devtools harmoniser-spec.md §13w, 1.7.1; the vocoder build only, FM-1 byte-identical):
+ * fm6_render (eng_fm6.c) and the operator loops in .ram_hot, out of the flash and the cache both cores share (FM6's time
+ * goes in waiting on memory, vocoder-ui-spec §7g). What the render calls and the flash calls too (the envelopes' steps,
+ * the note's lookups, the core) is inlined into each caller (FM6_AI), so the RAM code calls only itself */
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+#define FM6_HOT __attribute__((section(".ram_hot"), used, noinline))
+#define FM6_AI inline __attribute__((always_inline))
+#else
+#define FM6_HOT
+#define FM6_AI
+#endif
+static FM6_AI void fm6_env_advance(fm6_env_t *e, const uint8_t *op, uint32_t ix)
 {
     int32_t lv, actual, qrate;
     e->ix = (uint8_t)ix;
@@ -127,7 +138,7 @@ static void fm6_env_init(fm6_env_t *e, const uint8_t *op, int32_t outlevel, int3
     fm6_env_advance(e, op, 0);
 }
 
-static int32_t fm6_env_get(fm6_env_t *e, const uint8_t *op)
+static FM6_AI int32_t fm6_env_get(fm6_env_t *e, const uint8_t *op)
 {
     if (e->statc) {
         e->statc -= FM6_N;
@@ -158,7 +169,7 @@ static int32_t fm6_env_get(fm6_env_t *e, const uint8_t *op)
     return e->level;
 }
 
-static void fm6_env_key(fm6_env_t *e, const uint8_t *op, int down)
+static FM6_AI void fm6_env_key(fm6_env_t *e, const uint8_t *op, int down)
 {
     if (e->down != (uint8_t)down) {
         e->down = (uint8_t)down;
@@ -183,7 +194,7 @@ static const int8_t FM6_PENV_TAB[100] = {
     -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
     26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 38, 40, 43, 46, 49, 53, 58, 65, 73, 82, 92, 103, 115, 127};
 
-static void fm6_penv_advance(fm6_penv_t *e, const uint8_t *p, uint32_t ix)
+static FM6_AI void fm6_penv_advance(fm6_penv_t *e, const uint8_t *p, uint32_t ix)
 {
     e->ix = (uint8_t)ix;
     if (ix < 4u) {
@@ -198,7 +209,7 @@ static void fm6_penv_init(fm6_penv_t *e, const uint8_t *p)
     e->down = 1;
     fm6_penv_advance(e, p, 0);
 }
-static int32_t fm6_penv_get(fm6_penv_t *e, const uint8_t *p)
+static FM6_AI int32_t fm6_penv_get(fm6_penv_t *e, const uint8_t *p)
 {
     if (e->ix < 3u || (e->ix < 4u && !e->down)) {
         if (e->rising) {
@@ -217,7 +228,7 @@ static int32_t fm6_penv_get(fm6_penv_t *e, const uint8_t *p)
     }
     return e->level;
 }
-static void fm6_penv_key(fm6_penv_t *e, const uint8_t *p, int down)
+static FM6_AI void fm6_penv_key(fm6_penv_t *e, const uint8_t *p, int down)
 {
     if (e->down != (uint8_t)down) {
         e->down = (uint8_t)down;
@@ -349,7 +360,7 @@ static struct { uint32_t ops, vox, ops_max, vox_max, ons, syncs; } fm6_pr;
         out[i] STORE (int32_t)(((int64_t)fm6_sin(PH) * g) >> 15);               \
         phase = (int32_t)((uint32_t)phase + (uint32_t)freq);                    \
     }
-static __attribute__((noinline)) void fm6_op_run(int32_t *out, const int32_t *in, int32_t phase, int32_t freq,
+static __attribute__((noinline)) FM6_HOT void fm6_op_run(int32_t *out, const int32_t *in, int32_t phase, int32_t freq,
                                                  int32_t g1, int32_t g2, int add)
 {
     int32_t dg = (g2 - g1 + (FM6_N >> 1)) >> FM6_LG_N, g = g1;
@@ -379,7 +390,7 @@ static __attribute__((noinline)) void fm6_op_run(int32_t *out, const int32_t *in
         o += 2;                                                                 \
     } while (o < e)
 /* the operator with feedback (fb: its last two outputs) */
-static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int32_t freq, int32_t g1, int32_t g2,
+static __attribute__((noinline)) FM6_HOT void fm6_op_fb(int32_t *out, int32_t phase, int32_t freq, int32_t g1, int32_t g2,
                                                 int32_t *fb, int32_t shift, int add)
 {
     int32_t dg = (g2 - g1 + (FM6_N >> 1)) >> FM6_LG_N, g = g1, y0 = fb[0], y = fb[1], s;
@@ -393,7 +404,7 @@ static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int
 }
 #else
 /* the operator with feedback (fb: its last two outputs) */
-static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int32_t freq, int32_t g1, int32_t g2,
+static __attribute__((noinline)) FM6_HOT void fm6_op_fb(int32_t *out, int32_t phase, int32_t freq, int32_t g1, int32_t g2,
                                                 int32_t *fb, int32_t shift, int add)
 {
     int32_t dg = (g2 - g1 + (FM6_N >> 1)) >> FM6_LG_N, g = g1, y0 = fb[0], y = fb[1];
@@ -414,7 +425,7 @@ static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int
 /* msfa FmCore::render: the six operators of algorithm alg into out (Q24), through the two modulator buses
  * bus (scratch: the part's, eng_fm6.c fm6_part_t, so that parts render on both cores). Unlike msfa, out
  * starts empty: the first carrier sounding writes it, the next ones add. Returns 0 when none sounded (out untouched) */
-static int fm6_core_render(int32_t *out, int32_t (*bus)[FM6_N], fm6_op_t *op, uint32_t alg, int32_t *fb, int32_t fb_shift)
+static FM6_AI int fm6_core_render(int32_t *out, int32_t (*bus)[FM6_N], fm6_op_t *op, uint32_t alg, int32_t *fb, int32_t fb_shift)
 {
     const uint8_t *a = FM6_ALG[alg & 31u];
     uint8_t has[3] = {0, 0, 0};
@@ -536,7 +547,7 @@ static void fm6_note_init(fm6_note_t *n, const uint8_t *p, int32_t note, int32_t
     n->live = n->down = 1;
 }
 
-static void fm6_note_key(fm6_note_t *n, const uint8_t *p, int down)
+static FM6_AI void fm6_note_key(fm6_note_t *n, const uint8_t *p, int down)
 {
     uint32_t k;
     for (k = 0; k < 6u; k++)
@@ -547,7 +558,7 @@ static void fm6_note_key(fm6_note_t *n, const uint8_t *p, int down)
 
 /* the log2 frequency (Q24) of a pitch in 1/16 semitone plus a fine factor (1 + fine / 4096: Felucca's
  * unison detune, tune and bend below 1/16 semitone): log2(1 + x) ~ x / ln 2 for these small factors */
-static int32_t fm6_note_logfreq(int32_t pitch16, int32_t fine)
+static FM6_AI int32_t fm6_note_logfreq(int32_t pitch16, int32_t fine)
 {
     return FM6_LOGF0 + (int32_t)(((int64_t)pitch16 * ((1 << 24) / 12)) >> 4) + fine * 5909;
 }
@@ -556,7 +567,7 @@ static int32_t fm6_note_logfreq(int32_t pitch16, int32_t fine)
  * algorithm and feedback (already through the macros), dt[k]: a pitch offset per operator (Q24),
  * modlvl: a level offset of the operators that are not carriers (Q24 log2). Writes out (Q24); 0 = silent
  * (out untouched) */
-static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32_t (*bus)[FM6_N], int32_t lfo_val,
+static FM6_AI int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32_t (*bus)[FM6_N], int32_t lfo_val,
                              int32_t lfo_delay, int32_t logfreq, uint32_t alg, int32_t fb, const int32_t *dt, int32_t modlvl)
 {
     uint32_t pmd = (uint32_t)((p[FP_LPMD] % 100u) * 165u >> 6) * (uint32_t)lfo_delay;   /* Q32 */

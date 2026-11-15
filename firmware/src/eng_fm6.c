@@ -324,10 +324,26 @@ static int fm6_done(track_t *t, voice_t *v)
     return 1;
 }
 
-static void fm6_render(track_t *t, voice_t *v, int32_t *out, uint32_t len, const vmod_t *m)
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+/* (the render in RAM: the part's arena looked up, never claimed here: the note-on claims it, and a claim would call the
+ * flash's memset; an arena not FM6's: nothing to render, as a claimed, cleared one gave) */
+static inline __attribute__((always_inline)) fm6_part_t *fm6_part_ram(const track_t *t)
 {
+    uint32_t p = (uint32_t)(t - trk);
+    return p < NPART && eng_arena_own[p] == ENGI_FM6 + 1u ? (fm6_part_t *)&eng_arena[p] : 0;
+}
+#endif
+static FM6_HOT void fm6_render(track_t *t, voice_t *v, int32_t *out, uint32_t len, const vmod_t *m)   /* (in RAM: the
+                                                         * engine table calls it through a pointer, §13w 1.7.1) */
+{
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+    fm6_part_t *P = fm6_part_ram(t);
+    uint32_t vi = (uint32_t)(v - t->v);
+    fm6_note_t *n = P && vi < FM6_POLY ? &P->note[vi] : 0;
+#else
     fm6_part_t *P = fm6_part_of(t);
     fm6_note_t *n = fm6_note_of(t, v);
+#endif
     uint32_t tr = (uint32_t)(t - trk), i;
     const uint8_t *p;
     int32_t bus[FM6_N], lf, fb, lvl, k, a, da;
