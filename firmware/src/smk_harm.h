@@ -46,7 +46,10 @@
 #define HM_TLB 5u                    /* .. lags a block (a frame: 15 blocks, ~20 ms) */
 #define HM_TB (HM_TW + HM_TLN + 1u)  /* .. the snapshot */
 #define HM_TRN 256u                  /* the tracker's dry ring (5.5 kHz, a power of two), in the pool after the memory */
-#define HM_MEM (HM_LEN + HM_TRN + HM_TB)   /* (int16s of smk_fxpool; even) */
+#define HM_LENG (HM_LEN + 2u)        /* a lane's memory as stored: its HM_LEN slots, the guard slot (mem[HM_LEN], always
+                                      * mem[0]: a tap's second read needs no wrap test, harmoniser-spec.md §13s) and a
+                                      * spare int16 (alignment) */
+#define HM_MEM (HM_LENG + HM_TRN + HM_TB)  /* (int16s of smk_fxpool; even) */
 #define HM_FADE 512                  /* a voice's gain step a sample (Q15): ~64 samples in or out */
 #define HM_GAIN(v) ((int32_t)(v) * 32768 / 100)   /* FADER BANK E's 0 .. 127 as a gain, Q15: 100 = 0 dB exactly, 127
                                                    * +2.1 dB */
@@ -69,6 +72,9 @@ static uint8_t hm_int;               /* HOME > HARMONY > INTERVALS: 0 FIXED (the
 static int16_t hm_pitch;             /* FADER BANK B, T1's fader: -64 .. 63 (0: x1; main.c smk_faders, its dead zone) */
 static int16_t hm_fb;                /* FB MAIN 0 .. 127 */
 static int16_t hm_wd = 64;           /* WET / DRY 0 .. 127 (64: half each, exactly) */
+static int16_t hm_r22v;              /* LANE RATE, FADER BANK E's column 4 (harmoniser-spec.md §13s): 0 .. 127, 64 and up
+                                      * 22K (every lane's voices once a pair); an A/B, not kept: 44.1 at power-on */
+static volatile uint8_t hm_r22;      /* .. as the audio reads it (main.c smk_faders sets both) */
 /* the HARMONY page's settings (Stage 1b, harmoniser-spec.md §9; ui_hpage.c; kept: project.c vocset). The audio reads
  * them once a block */
 enum { HF_NORM, HF_EXT, HF_SHARP, HF_FLAT, HF_N };   /* a voice's function (FUNCTION SELECT IN; EXTEND: Stage 2) */
@@ -124,8 +130,8 @@ static const int8_t HM_PADIV[16] = {0, 2, 4, 5, 7, 9, 10, 12, -2, -4, -5, -7, -9
 /* (PITCH, FEEDBACK, VOICE IN, WET / DRY: FADER BANK E, HARM; the sends: F, SENDS; ui_fbank.c, main.c) */
 static int16_t *hm_ring;             /* the VOICE lane's memory and the tracker's rings: smk_fxpool's start (fx.c sets it;
                                       * slicer.c owns it) */
-#define hm_tring (hm_ring + HM_LEN)                  /* the dry input, 5.5 kHz */
-#define hm_tb (hm_ring + HM_LEN + HM_TRN)            /* the frame's snapshot, scaled */
+#define hm_tring (hm_ring + HM_LENG)                 /* the dry input, 5.5 kHz */
+#define hm_tb (hm_ring + HM_LENG + HM_TRN)           /* the frame's snapshot, scaled */
 #define HM_T(t) (hm_on && (t) == &trk[0])
 /* Stage 1c (harmoniser-spec.md §10): a LANE across each track sent to it, the harmoniser in its track's chain (fx.c
  * hm_insert: after the track's LEVEL, mute and punch-in, before its pan, sends and stem): VOICE (T1, the input), T2,
@@ -149,6 +155,7 @@ typedef struct {
     int32_t rkd, rsg;                /* the dry's share and bank F's send (the mixer's: fx.c hm_insert, mix_units) */
     uint16_t quiet;                  /* blocks its input, voices and feedback have all been silent (§13f) */
     int32_t lg;                      /* its input limiter's gain, Q15 (0: not started; harmoniser-spec.md §13q) */
+    int32_t pvl, pvr;                /* its last output sample's sums (L, R; LANE RATE 22K's in-between sample, §13s) */
 } hm_lane_t;
 /* a lane's input limiter (§13q): a hot source (T2's pre-fader FM6) is turned down to HM_LIM instead of hard-clipped at
  * full scale; a block's peak is known before it plays, so the gain drops at once for the block (no clip) and comes back
@@ -160,7 +167,7 @@ typedef struct {
 #define HM_QTHR 3
 #define HM_QBLK 448u                     /* blocks of 32 (~325 ms) */
 static hm_lane_t hm_ln[HL_N] HM_POOL;
-static int16_t hm_lmem[HL_N - 1u][HM_LEN] HM_POOL;   /* T2, T3, DRUMS (42 KB; the VOICE lane's in smk_fxpool) */
+static int16_t hm_lmem[HL_N - 1u][HM_LENG] HM_POOL;   /* T2, T3, DRUMS (42 KB; the VOICE lane's in smk_fxpool) */
 static struct {                      /* the block's shared values (hm_block, core 0; the lanes read them) */
     int32_t gt[3], lg[3], pl[3], pr[3];   /* each voice: its gate (Q15), LEVEL x on (Q15), pan's left / right (Q12) */
     int32_t fbk, wg, dg, ig, kd;     /* feedback (Q15 over the voices), WET (Q15), DRY LEVEL (Q15), INPUT LEVEL (Q12), the
@@ -242,7 +249,7 @@ static inline int32_t hm_read(const int16_t *hm_ring, int32_t wq, int32_t d)   /
         p += (int32_t)(HM_LEN << 16);
     i = (uint32_t)p >> 16;
     a = hm_ring[i];
-    b = hm_ring[i + 1u >= HM_LEN ? 0u : i + 1u];
+    b = hm_ring[i + 1u];                                /* (slot HM_LEN: the guard, slot 0's copy, §13s) */
     return a + (((b - a) * (int32_t)(((uint32_t)p >> 1) & 0x7FFFu)) >> 15);
 }
 
@@ -431,7 +438,7 @@ static void hm_lane_start(uint32_t k)
     hm_lane_t *L = &hm_ln[k % HL_N];
     memset(L, 0, sizeof *L);
     L->mem = k ? hm_lmem[(k - 1u) % (HL_N - 1u)] : hm_ring;
-    memset(L->mem, 0, HM_LEN * sizeof L->mem[0]);
+    memset(L->mem, 0, HM_LENG * sizeof L->mem[0]);
     L->ph[1] = (int32_t)(HM_SEG << 14), L->ph[2] = (int32_t)(HM_SEG << 15);
     L->run = 1;
 }
@@ -521,8 +528,9 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
     int16_t *mw;
     uint32_t i, v, sc = k == HL_VOICE && hm_int != 0;
     int32_t pk = hm.pk_in, po = hm.pk_out, ui_in = 0, ui_out = 0, ui_fb = 0, ui_v[3] = {0, 0, 0};
-    int32_t fbk = hb.fbk, wg = 32768, ig = hb.ig, rep = hm.rep, byp = hb.byp, wg0, fb0, ig0;   /* (§13o:
-                                                         * WET / DRY is T1's; a send lane's balance is bank F's, fx.c) */
+    int32_t fbk = hb.fbk, wg = 32768, ig = hb.ig, rep = hm.rep, byp = hb.byp, fb0, ig0;   /* (§13o: WET /
+                                                         * DRY is T1's; a send lane's balance is bank F's, fx.c; the
+                                                         * lane's own WET is unity: §13s, no product for it) */
     TIM_VOC_T(tl);                                      /* (§12: each lane's time, console "timing" ln_*) */
     if (!L->run)
         hm_lane_start(k);
@@ -547,10 +555,10 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
     }
     if (!L->rok)                                        /* (§13c: the ramps from the last block's values) */
         L->rwg = wg, L->rfb = fbk, L->rig = ig, L->rok = 1;
-    wg0 = L->rwg, fb0 = L->rfb, ig0 = L->rig;
+    fb0 = L->rfb, ig0 = L->rig;
     L->rwg = wg, L->rfb = fbk, L->rig = ig;
     {
-        const int32_t wg1 = wg, fb1 = fbk, ig1 = ig;
+        const int32_t fb1 = fbk, ig1 = ig;
         int32_t lg0 = L->lg ? L->lg : 32768, lg1;
         {   /* (§13q: the block's peak after INPUT LEVEL, the limiter's gain for it) */
             int32_t im = ig0 > ig1 ? ig0 : ig1, pkb = 0, t;
@@ -603,7 +611,7 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
             vs += c_;                                                                                               \
             sl += (c_ * PL) >> 12, sr += (c_ * PR) >> 12;             /* (its pan) */                               \
             if (wv)                                                                                                 \
-                wv[V][i] = byp ? 0 : hm_knee((c_ * wg) >> 15);                                                      \
+                wv[V][i] = byp ? 0 : hm_knee(c_);                     /* (WET unity, §13s) */                       \
             if (t & 1u) {                                             /* (its meter: once a pair) */                \
                 c_ = c_ < 0 ? -c_ : c_;                                                                             \
                 UV = c_ > UV ? c_ : UV;                                                                             \
@@ -615,11 +623,115 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
         const int32_t gtA = hb.gt[0], gtB = hb.gt[1], gtC = hb.gt[2], dA = hm.dinc[0], dB = hm.dinc[1], dC = hm.dinc[2];
         const int32_t lA = hb.lg[0], lB = hb.lg[1], lC = hb.lg[2], plA = hb.pl[0], plB = hb.pl[1], plC = hb.pl[2];
         const int32_t prA = hb.pr[0], prB = hb.pr[1], prC = hb.pr[2];
+        int32_t lsl = L->pvl, lsr = L->pvr;
+        if (!byp && !wv && !((n | t) & 1u) && fb0 == fb1 && ig0 == ig1) {
+            /* §13s: a steady block (FEEDBACK and INPUT LEVEL not ramping, IN, no voices apart), a pair at a time: the
+             * loop below sample for sample, the pair's phase tests, the voices-apart and IN / OUT tests out of the loop,
+             * the input's meter and the voices' sum for the feedback on the pair's second sample only (where the loop
+             * below takes them); an open voice's fade (32767) without its product, the same value. LANE RATE 22K: the
+             * voices once a pair, at its second sample (the feedback's), each stepping two samples; the first sample the
+             * mean of the last pair's and this pair's */
+            const uint32_t lim = lg0 < 32768 || lg1 < 32768, st = hm_r22 ? 2u : 1u;
+#define HM_VF(G, P, GT, DN, LG, PL, PR, UV, ST, M) do {                                                            \
+                int32_t p_, p2_, t1_, a1_, a2_, c_;                                                                 \
+                if (G != GT) {                                                                                      \
+                    const int32_t s_ = HM_FADE * (int32_t)(ST);                                                     \
+                    G = G < GT ? (G + s_ > GT ? GT : G + s_) : (G - s_ < GT ? GT : G - s_);                         \
+                }                                                                                                   \
+                if (!G)                                                                                             \
+                    break;                                                                                          \
+                p_ = P + DN * (int32_t)(ST);                                                                        \
+                if (p_ < 0)                                                                                         \
+                    p_ += HM_S16;                                                                                   \
+                else if (p_ >= HM_S16)                                                                              \
+                    p_ -= HM_S16;                                                                                   \
+                P = p_;                                                                                             \
+                p2_ = p_ + HM_S15;                                                                                  \
+                if (p2_ >= HM_S16)                                                                                  \
+                    p2_ -= HM_S16;                                                                                  \
+                t1_ = p_ < HM_S15 ? p_ : HM_S16 - p_;                                                               \
+                t1_ = (int32_t)(((uint64_t)(uint32_t)t1_ * (0xFFFFFFFFu / HM_SEG)) >> 32);                          \
+                a1_ = hm_read(mr, wq, p_ + HM_DQ);                                                                  \
+                a2_ = hm_read(mr, wq, p2_ + HM_DQ);                                                                 \
+                c_ = (a1_ * t1_ + a2_ * (32767 - t1_)) >> 15;                                                       \
+                c_ = G == 32767 ? ((c_ - (c_ > 0)) * LG) >> 15 : (((c_ * G) >> 15) * LG) >> 15;   /* (open: x 32767  \
+                                                         * >> 15 is c_ - 1 above 0, c_ at or under: |c_| <= 32767) */ \
+                if (M)                                                                                              \
+                    vs += c_;                                                                                       \
+                sl += (c_ * PL) >> 12, sr += (c_ * PR) >> 12;                                                       \
+                if (M) {                                                                                            \
+                    c_ = c_ < 0 ? -c_ : c_;                                                                         \
+                    UV = c_ > UV ? c_ : UV;                                                                         \
+                }                                                                                                   \
+            } while (0)
+            for (i = 0; i < n; i += 2u) {
+                int32_t x0 = (in[i] * ig1) >> 12, x1 = (in[i + 1u] * ig1) >> 12, vs = 0, sl = 0, sr = 0, wq, ax, ar;
+                if (lim) {
+                    x0 = (int32_t)(((int64_t)x0 * (lg0 + (((lg1 - lg0) * (int32_t)i) >> 5))) >> 15);
+                    x1 = (int32_t)(((int64_t)x1 * (lg0 + (((lg1 - lg0) * (int32_t)(i + 1u)) >> 5))) >> 15);
+                }
+                x0 = clamp(x0, -32767, 32767), x1 = clamp(x1, -32767, 32767);
+                ax = x1 < 0 ? -x1 : x1;
+                pk = ax > pk ? ax : pk;
+                ui_in = ax > ui_in ? ax : ui_in;
+                if (sc) {                               /* (t even: the ring's eighth sample is never the pair's first) */
+                    hm.dacc += x0 + x1;
+                    if (((t + 1u) & 7u) == 7u) {
+                        hm_tring[hm.tw & (HM_TRN - 1u)] = (int16_t)(hm.dacc >> 3);
+                        hm.tw++;
+                        hm.dacc = 0;
+                    }
+                }
+                half = x0;
+                if (st == 1u) {                         /* the pair's first sample */
+                    wq = (int32_t)(w << 16) - 32768;
+                    HM_VF(gA, pA, gtA, dA, lA, plA, prA, ui_v[0], 1, 0);
+                    HM_VF(gB, pB, gtB, dB, lB, plB, prB, ui_v[1], 1, 0);
+                    HM_VF(gC, pC, gtC, dC, lC, plC, prC, ui_v[2], 1, 0);
+                    sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
+                    wl[i] = hm_knee(sl), wr[i] = hm_knee(sr);
+                    sl = sr = 0;
+                }
+                if (!rep) {                             /* its second: one stored sample, the feedback in, soft-limited */
+                    int32_t s = clamp(((x0 + x1) >> 1) + fb, -32767, 32767), as = s < 0 ? -s : s;
+                    ui_fb = as > ui_fb ? as : ui_fb;
+                    s -= (((s * s) >> 15) * s >> 15) * 10923 >> 15;
+                    mw[w] = (int16_t)s;
+                    if (!w)
+                        mw[HM_LEN] = (int16_t)s;        /* (the guard: slot 0's copy) */
+                }
+                w = w + 1u >= HM_LEN ? 0u : w + 1u;
+                wq = (int32_t)(w << 16);
+                HM_VF(gA, pA, gtA, dA, lA, plA, prA, ui_v[0], st, 1);
+                HM_VF(gB, pB, gtB, dB, lB, plB, prB, ui_v[1], st, 1);
+                HM_VF(gC, pC, gtC, dC, lC, plC, prC, ui_v[2], st, 1);
+                {
+                    int32_t f = clamp(vs, -65535, 65535) * fb1;
+                    f = (f + (f < 0 ? 32767 : 0)) >> 15;
+                    if (eql)
+                        f = hm_bq(L->eq[0], hb.cq[0], f);
+                    if (eqh)
+                        f = hm_bq(L->eq[1], hb.cq[1], f);
+                    fb = f;
+                }
+                sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
+                if (st != 1u)                           /* (22K: the first sample between the pairs) */
+                    wl[i] = hm_knee((lsl + sl) >> 1), wr[i] = hm_knee((lsr + sr) >> 1);
+                lsl = sl, lsr = sr;
+                wl[i + 1u] = hm_knee(sl), wr[i + 1u] = hm_knee(sr);
+                ax = wl[i + 1u] < 0 ? -wl[i + 1u] : wl[i + 1u];
+                ar = wr[i + 1u] < 0 ? -wr[i + 1u] : wr[i + 1u];
+                ax = ax > ar ? ax : ar;
+                po = ax > po ? ax : po;
+                ui_out = ax > ui_out ? ax : ui_out;
+                t += 2u;
+            }
+#undef HM_VF
+        } else
         for (i = 0; i < n; i++) {
             int32_t x, vs = 0, sl = 0, sr = 0, wq, ax;
-            wg = wg0 + (((wg1 - wg0) * (int32_t)i) >> 5);   /* (§13c: across the block, VOC_MAXN = 32; at rest the same
+            fbk = fb0 + (((fb1 - fb0) * (int32_t)i) >> 5);   /* (§13c: across the block, VOC_MAXN = 32; at rest the same
                                                          * value as before, bit for bit) */
-            fbk = fb0 + (((fb1 - fb0) * (int32_t)i) >> 5);
             ig = ig0 + (((ig1 - ig0) * (int32_t)i) >> 5);
             x = (in[i] * ig) >> 12;                      /* (INPUT LEVEL) */
             if (lg0 < 32768 || lg1 < 32768)             /* (§13q: the limiter, only while it acts) */
@@ -646,6 +758,8 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                     ui_fb = as > ui_fb ? as : ui_fb;
                     s -= (((s * s) >> 15) * s >> 15) * 10923 >> 15;   /* x - x^3 / 3 (slope <= 1; full scale -> 2/3) */
                     mw[w] = (int16_t)s;
+                    if (!w)
+                        mw[HM_LEN] = (int16_t)s;        /* (the guard: slot 0's copy, §13s) */
                 }
                 w = w + 1u >= HM_LEN ? 0u : w + 1u;
             }
@@ -664,9 +778,12 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
             }
             if (byp) {                                  /* IN / OUT: OUT, no wet (the dry, hb.kd 32768, is the input) */
                 wl[i] = wr[i] = 0;
-            } else {
+                lsl = lsr = 0;
+            } else {                                    /* (WET unity, §13s: no product; it was sl x 32768 in 32 bits,
+                                                         * which wrapped past 65535) */
                 sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
-                wl[i] = hm_knee((sl * wg) >> 15), wr[i] = hm_knee((sr * wg) >> 15);
+                wl[i] = hm_knee(sl), wr[i] = hm_knee(sr);
+                lsl = sl, lsr = sr;
             }
             if (t & 1u) {                               /* (the meters: once a pair) */
                 int32_t ar = wr[i] < 0 ? -wr[i] : wr[i];
@@ -677,7 +794,7 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
             }
             t++;
         }
-        L->w = w, L->t = t, L->half = half, L->fb = fb;
+        L->w = w, L->t = t, L->half = half, L->fb = fb, L->pvl = lsl, L->pvr = lsr;
         L->g[0] = gA, L->g[1] = gB, L->g[2] = gC, L->ph[0] = pA, L->ph[1] = pB, L->ph[2] = pC;
     }
 #undef HM_VOICE

@@ -566,6 +566,7 @@ static void hp_console(const char *p)
         con_dec(hm_pad);
         con_puts(" voice-in ");
         con_dec(hm_send[0]);
+        con_puts(hm_r22 ? " rate 22K" : " rate 44.1");   /* (LANE RATE, bank E column 4: §13s) */
         con_putc(13);
         con_putc(10);
         con_puts("  lanes in/out/write (int16 peaks), bank F:");   /* (§12: VOICE, T2, T3, DRUMS; cleared) */

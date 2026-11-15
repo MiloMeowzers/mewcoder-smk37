@@ -306,7 +306,11 @@ static void smk_faders(void)
                 hm_fb = (int16_t)(v > 127u ? 127u : v);
             } else if (i == 2u) {
                 hm_send[0] = (uint8_t)(v > 127u ? 127u : v);
-            }                                         /* (column 4: nothing; WET / DRY is F's T1 column, §13p) */
+            } else {                                  /* (column 4: LANE RATE, 64 and up 22K, an A/B: §13s; WET / DRY
+                                                       * is F's T1 column, §13p) */
+                hm_r22v = (int16_t)(v > 127u ? 127u : v);
+                hm_r22 = (uint8_t)(hm_r22v >= 64);
+            }
             break;
         case 5:                                       /* F, MIX: each track's dry / harmony balance (T1: hm_wd) */
             if (i)

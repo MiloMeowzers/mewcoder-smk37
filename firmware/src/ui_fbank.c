@@ -61,7 +61,7 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
     static const uint8_t TID[4] = {P_LEVEL, P_TFLT, P_REV, P_DLY}, GID[4] = {G_DRLVL, 0, G_DRREV, G_DRDLY};
 #if SMK_UAC_IN_PROBE
     static int16_t zero, hv[4];
-    if (b == 4u) {                                 /* E, HARM: PITCH (semitones, fb_draw), FEEDBACK, VOICE IN, WET / DRY */
+    if (b == 4u) {                                 /* E, HARM: PITCH (semitones, fb_draw), FEEDBACK, VOICE IN, LANE RATE */
         static const param_desc_t PIT = {"PITCH", F_BIPCT, -64, 63, 0, 0, 0}, PCT = {"HARM", F_PCT, 0, 127, 0, 0, 0};
         if (i == 0u) {
             *vp = &hm_pitch;
@@ -70,9 +70,9 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
         if (i == 2u) {
             hv[0] = (int16_t)hm_send[0];
             *vp = &hv[0];
-        } else if (i == 3u) {                      /* (WET / DRY moved to F's T1 column: harmoniser-spec.md §13p) */
-            *vp = &zero;
-            return &FB_NONE;
+        } else if (i == 3u) {                      /* LANE RATE: 44.1 / 22K, an A/B (harmoniser-spec.md §13s; WET / DRY
+                                                     * moved to F's T1 column, §13p) */
+            *vp = &hm_r22v;
         } else {
             *vp = &hm_fb;
         }
@@ -138,7 +138,7 @@ static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, 
     if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW)
         str_cpy(lab, "T3 CUTOFF", 10);
     if (b == 4u) {
-        static const char *const HL[4] = {"PITCH", "FEEDBACK", "VOICE IN", "WET/DRY"};
+        static const char *const HL[4] = {"PITCH", "FEEDBACK", "VOICE IN", "LANE RATE"};
         str_cpy(lab, HL[i & 3u], 10);
     }
     if (b == 5u) {
@@ -159,6 +159,8 @@ static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, 
         fmt_fixz(val + 1, (uint32_t)(t10 < 0 ? -t10 : t10), 1);   /* ("0.0", not ".0") */
         unit = " ST";
     }
+    if (b == 4u && i == 3u)                            /* LANE RATE: the voices' rate (64 and up: 22K) */
+        str_cpy(val, **vp >= 64 ? "22K" : "44.1K", sizeof val), unit = "";
 #endif
     str_cpy(v2, val, 20);
     str_cpy(v2 + str_len(v2), unit, 20 - str_len(v2));

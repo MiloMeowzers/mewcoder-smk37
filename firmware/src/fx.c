@@ -1641,13 +1641,20 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                     hm_dran = 1;
                     goto drum_lane_done;
                 }
+                {
+                const uint32_t rest = !dd && kd0 == kd && sg0 == sg;   /* (§13s: nothing ramping, the two gains the
+                                                         * same every sample: worked out once, the same values) */
+                const int32_t gd1 = (int32_t)(((int64_t)kd * d0) >> 15), gw1 = (int32_t)(((int64_t)sg * d0) >> 15);
                 for (i = 0; i < n; i++) {
-                    int32_t g = d0 + dd * (int32_t)i, kq = kd0 + (((kd - kd0) * (int32_t)i) >> 5);
-                    int32_t wq = sg0 + (((sg - sg0) * (int32_t)i) >> 5);   /* (§13o: the harmony's share) */
-                    int32_t gd = (int32_t)(((int64_t)kq * g) >> 15), gw = (int32_t)(((int64_t)wq * g) >> 15);   /* (Build
+                    int32_t gd = gd1, gw = gw1, ol, orr;
+                    if (!rest) {
+                        int32_t g = d0 + dd * (int32_t)i, kq = kd0 + (((kd - kd0) * (int32_t)i) >> 5);
+                        int32_t wq = sg0 + (((sg - sg0) * (int32_t)i) >> 5);   /* (§13o: the harmony's share) */
+                        gd = (int32_t)(((int64_t)kq * g) >> 15), gw = (int32_t)(((int64_t)wq * g) >> 15);   /* (Build
                                                          * 1.2: the blend and DRUMS folded, one product a path) */
-                    int32_t ol = hm_sc(dk.l[i], gd) + hm_sc(VOC_VS(wl[i]), gw);
-                    int32_t orr = hm_sc(dk.r[i], gd) + hm_sc(VOC_VS(wr[i]), gw);
+                    }
+                    ol = hm_sc(dk.l[i], gd) + hm_sc(VOC_VS(wl[i]), gw);
+                    orr = hm_sc(dk.r[i], gd) + hm_sc(VOC_VS(wr[i]), gw);
                     if (snd) {                          /* (the drums' sends: nothing to add at 0) */
                         mx->sr[i] += hm_sc(dk.sr[i], gd);
                         mx->sd[i] += hm_sc(dk.sd[i], gd);
@@ -1659,6 +1666,7 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                     if (sep)
                         for (v = 0; v < 3u; v++)
                             hm_dwv[v][i] = hm_sc(hm_dwv[v][i], gw);   /* (the voices' drum channels, after DRUMS too) */
+                }
                 }
                 hm_dran = 1;
                 TIM_LAP(TS_DPOST, td);

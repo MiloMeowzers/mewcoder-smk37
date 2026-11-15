@@ -3285,6 +3285,15 @@ static void seq_tick(track_t *t, uint32_t adv)
         }
     }
     TIM_LAP(TS_QFIRE, tq);
+#if BOARD_SMK37
+    /* (harmoniser-spec.md §13s: seq_ratchets' own first tests, before the time from the nudge it would ignore: a
+     * skipped step, or a melodic step with no ratchet; the drums' test is per lane, left to it) */
+    if (t->seq_skip ||
+        (!is_drum(t) && (t->step[t->seq_idx % NSTEP].time != ST_NOTE || !t->step[t->seq_idx % NSTEP].rat))) {
+        TIM_LAP(TS_QREST, tq);
+        return;
+    }
+#endif
     /* the ratchets of the step playing, timed from where it fired (its hits ride with its nudge) */
     if (t->seq_abs == abs)
         rel = (int32_t)into - micro_units(t, abs, slen);
@@ -3978,8 +3987,10 @@ static void events_block(uint32_t n)
     }
     click_tick();
     roll_block(adv);
+    TIM_LAP(TS_EVR, te);
     for (i = 0; i < NPART; i++)
         arp_tick(&trk[i], adv);
+    TIM_LAP(TS_EVA, te);
     if (song.playing) {
         song.tick++;
         clk_pos += adv;
@@ -3991,5 +4002,5 @@ static void events_block(uint32_t n)
         arr_elapse(&arrangement_clock, adv, 1u);   /* (units: n x BPM, or the MIDI clock) */
 #endif
     }
-    TIM_LAP(TS_EVA, te);
+    TIM_LAP(TS_EVC, te);
 }
