@@ -1,5 +1,16 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+/* (smk37-devtools harmoniser-spec.md §13w-5) the vocoder build: the USB stems' service and the audio in's receive in
+ * RAM (.ram_hot; their two SIE helpers inlined): out of the flash and the cache the busy halves fight over, where their
+ * time grew with the load (TIMER5 376 -> 618 us a half). Called through T5_FAR (RAM and the flash are beyond a call) */
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+#define T5HOT __attribute__((section(".ram_hot"), noinline, used, flatten))
+static inline void *t5_far(void *p) { void *volatile q = p; return q; }
+#define T5_FAR(fn) ((__typeof__(&fn))t5_far((void *)&fn))
+#else
+#define T5HOT
+#define T5_FAR(fn) (fn)
+#endif
 /* USB full-speed device on USB0: a class-compliant USB-MIDI interface.
  * All SIE traffic happens in usb_poll(), called from the TIMER5 ISR at 2 kHz,
  * so INDEX is never shared and no USB IRQ is needed. MIDI in goes to a ring
@@ -1920,17 +1931,6 @@ static uint32_t uac6_probe_packet(uint8_t *d)
 /* TIMER5: a packet received on UIN_EP OUT (one a ms; polled at 2 kHz, so each is taken before the next; nested in the
  * render too, main.c): its frames into the ring, then the FIFO released (as ep3_rx). OverRun: a packet came while one
  * waited (lost) */
-/* (smk37-devtools harmoniser-spec.md §13w-5) the vocoder build: the USB stems' service and the audio in's receive in
- * RAM (.ram_hot; their two SIE helpers inlined): out of the flash and the cache the busy halves fight over, where their
- * time grew with the load (TIMER5 376 -> 618 us a half). Called through T5_FAR (RAM and the flash are beyond a call) */
-#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
-#define T5HOT __attribute__((section(".ram_hot"), noinline, used, flatten))
-static inline void *t5_far(void *p) { void *volatile q = p; return q; }
-#define T5_FAR(fn) ((__typeof__(&fn))t5_far((void *)&fn))
-#else
-#define T5HOT
-#define T5_FAR(fn) (fn)
-#endif
 static void T5HOT uin_rx(void)
 {
     uint32_t csr, n, i, w;
