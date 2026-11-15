@@ -11,7 +11,7 @@
 > MIDI as T1's keys (A11); the STEM FX punch-in now sits **after** the lane and the fader (A6, A10); and the **load
 > settings**: LANE THIN, LANE RATE, LANE MONO and POLY CAP in the HOME menu (A8.0). The load is much lower: on the
 > owner's heaviest scene, from the song slowing to 65 % speed (1.5) to real time with no voice shed (1.7.1, A8.2).
-> What to know for early testing: [A13](#a13-pre-release-good-to-know).
+> What to know for early testing: [A13](#a13-early-testing-what-to-expect).
 
 The harmoniser turns your live voice (the same USB audio in as the [vocoder](VOCODER.md)) into up to **three harmony
 voices that keep your voice's own sound**. The vocoder swaps your voice's timbre for the carrier's; the harmoniser
@@ -683,7 +683,7 @@ vocoder settings show CONTROL, INPUT LEVEL, the EQ and FB LIMIT. **The pads reco
 | A faint flutter on sustained low notes | The splice (ALGORITHM 1), most on big intervals down: the H949's colour. |
 | The harmony busy, then sparse, then busy, not with the pattern | T1's cycle and the drum pattern drift against each other, and the harmony follows whichever T1 notes land (the readings show no voice starved): a slow phasing pattern, a mini generative sequence. Line the patterns' lengths up for a steady harmony |
 
-### A13. Pre-release: good to know
+### A13. Early testing: what to expect
 
 This is an **early testing build**:
 - **Three voices for everything:** the keys, the pads and the sequencer share them. With three pads latched, a fourth
