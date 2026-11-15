@@ -504,19 +504,16 @@ static void cache_console(const char *p)
     uint32_t con, dw, iw;
     if (con_word(&p, "free")) {
         if (!fm1_cache_dways_busy()) {
-            con_puts("cache: data ways 0-6 not caching already
-");
+            con_puts("cache: data ways 0-6 not caching already\r\n");
         } else {
             fm1_cache_free_dways();
-            con_puts("cache: data ways 0-6 freed
-");
+            con_puts("cache: data ways 0-6 freed\r\n");
         }
     }
     if (con_word(&p, "test") || con_word(&p, "check")) {
         int w = 1;
         if (fm1_cache_dways_busy()) {
-            con_puts("cache test: refused, data ways 0-6 still caching (cache free first)
-");
+            con_puts("cache test: refused, data ways 0-6 still caching (cache free first)\r\n");
             return;
         }
         if (con_word(&p, "read"))
