@@ -323,6 +323,14 @@ typedef struct {                 /* msfa FmOpParams */
 } fm6_op_t;
 
 #define FM6_THRESH 1120          /* msfa kLevelThresh: an operator below it on both block ends is skipped */
+#if BOARD_SMK37
+/* the probe (smk37-devtools harmoniser-spec.md §13v-2, console status): operators computed and voices rendered this half
+ * (audio.c keeps the worst), note-ons, full patch rebuilds (fm6_sync past its no-change test) */
+static struct { uint32_t ops, vox, ops_max, vox_max, ons, syncs; } fm6_pr;
+#define FM6_PR(x) ((void)(x))
+#else
+#define FM6_PR(x) ((void)0)
+#endif
 
 /* (SMK-37, the vocoder build: FM6_FAST) the feedback operator in two loops (+= or =), two samples a turn, instead of
  * testing add every sample (27 instructions a sample on the device, 24.5-25.5 after: c10c13a's disassembly); the same
@@ -418,6 +426,7 @@ static int fm6_core_render(int32_t *out, int32_t (*bus)[FM6_N], fm6_op_t *op, ui
         int32_t g1 = op[k].gain_out, g2 = fm6_exp2(op[k].level_in - (14 << 24));
         op[k].gain_out = g2;
         if (g1 >= FM6_THRESH || g2 >= FM6_THRESH) {
+            FM6_PR(fm6_pr.ops++);
             if (!has[outbus])
                 add = 0;
             if (inbus == 0u || !has[inbus]) {

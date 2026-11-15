@@ -57,9 +57,12 @@ enum { MI_COLOR, MI_ZOOM,
        MI_VEATT, MI_VEREL, MI_VGDEL, MI_VBRM,      /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes), GATE DELAY (the
                                                     * external carrier's gate), BRIDGE MODE (smk_vocoder.h voc_brmode);
                                                     * kept, project.c */
-       MI_HON, MI_HINT, MI_HNOTE,                  /* HARMONY > HARMONY (smk_harm.h hm_on: T1 the harmoniser; kept,
+       MI_HON, MI_HINT, MI_HNOTE, MI_LMONO,        /* HARMONY > HARMONY (smk_harm.h hm_on: T1 the harmoniser; kept,
                                                     * project.c), INTERVALS (hm_int: FIXED / SCALE; kept),
                                                     * project.c), SUNG NOTE (the tracker's, a readout) */
+       MI_LT0, MI_LT1, MI_LT2, MI_LT3,             /* LANE THIN > VOICE, T2, T3, DRUMS (smk_harm.h hm_thin: a lane's voices
+                                                    * may fade under load; kept, project.c; harmoniser-spec.md §13u) */
+       MI_LR0, MI_LR1, MI_LR2, MI_LR3,             /* LANE RATE > VOICE, T2, T3, DRUMS (hm_lrate: 44.1 / 22K; kept) */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -98,6 +101,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
                                               "ATTACK", "RELEASE", "GATE DELAY", "BRIDGE MODE", "HARMONY", "INTERVALS", "SUNG NOTE",
+                                              "LANE MONO", "VOICE", "T2", "T3", "DRUMS", "VOICE", "T2", "T3", "DRUMS",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -110,12 +114,14 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #if BOARD_SMK37
 #if SMK_UAC_IN_PROBE
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV,
-       MS_HARM, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+       MS_HARM, MS_LTHIN, MS_LRATE, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
-                                              "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "HARMONY", "SEQ", "PLAY", "MIDI",
+                                              "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "HARMONY", "LANE THIN",
+                                              "LANE RATE", "SEQ", "PLAY", "MIDI",
                                               "DAW", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
-                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_HON, MI_ADV, MI_VEL, MI_TRS,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_ADV,
+                                               MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
 #else
@@ -128,7 +134,7 @@ static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, M
 #endif
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
 #if SMK_UAC_IN_PROBE
-               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_HON - MI_VEATT <= 4 && MI_ADV - MI_HON <= 4 &&
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_HON - MI_VEATT <= 4 && MI_LT0 - MI_HON <= 4 && MI_LR0 - MI_LT0 <= 4 && MI_ADV - MI_LR0 <= 4 &&
 #else
                MI_ADV - MI_VOC0 <= 4 &&
 #endif
@@ -427,6 +433,15 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
                                                        * song's key (dim: HARMONY off) */
         *c = hm_on ? C_HI : C_DIM;
         return hm_int ? "SCALE" : "FIXED";
+    case MI_LMONO:                                    /* the lanes mono while the stems stream (§13v-6) */
+        *c = hm_on ? C_HI : C_DIM;
+        return hm_lmono ? "WITH STEMS" : "OFF";
+    case MI_LT0: case MI_LT1: case MI_LT2: case MI_LT3:   /* a lane's voices may fade under load (dim: HARMONY off) */
+        *c = hm_on ? C_HI : C_DIM;
+        return (hm_thin >> (i - MI_LT0)) & 1u ? "ON" : "OFF";
+    case MI_LR0: case MI_LR1: case MI_LR2: case MI_LR3:   /* a lane's voices every sample, or once a pair */
+        *c = hm_on ? C_HI : C_DIM;
+        return (hm_lrate >> (i - MI_LR0)) & 1u ? "22K" : "44.1K";
     case MI_HNOTE: {                                  /* the tracker's note (dim: it runs with INTERVALS SCALE only) */
         static char b[6];
         uint32_t nt = hm.tnote;
@@ -1039,6 +1054,19 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     case MI_HNOTE:                                     /* (a readout) */
         break;
+    case MI_LMONO:                                     /* right ON, left OFF; OCT+ toggles */
+        hm_lmono = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !hm_lmono);
+        break;
+    case MI_LT0: case MI_LT1: case MI_LT2: case MI_LT3: {   /* right ON, left OFF; OCT+ toggles */
+        uint32_t b = 1u << (i - MI_LT0);
+        hm_thin = (uint8_t)(s > 0 ? hm_thin | b : s < 0 ? hm_thin & ~b : hm_thin ^ b);
+        break;
+    }
+    case MI_LR0: case MI_LR1: case MI_LR2: case MI_LR3: {   /* right 22K, left 44.1K; OCT+ toggles */
+        uint32_t b = 1u << (i - MI_LR0);
+        hm_lrate = (uint8_t)(s > 0 ? hm_lrate | b : s < 0 ? hm_lrate & ~b : hm_lrate ^ b);
+        break;
+    }
     case MI_VGDEL: {                                   /* 0 .. 50 ms in 5 (stops at the ends); OCT+ back to 0 */
         int32_t v = s ? (int32_t)(voc_gdel % 11u) + s : 0;
         voc_gdel = (uint8_t)(v < 0 ? 0 : v > 10 ? 10 : v);

@@ -80,7 +80,10 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         int32_t *o = &abuf[half * HALF_WORDS];
         if (shed_req) {
             shed_req = 0;
-            shed_voice();
+#ifdef SMK_HARM
+            if (!hm_thin_one())                         /* (a lane voice thinned first, LANE THIN: §13v-5) */
+#endif
+                shed_voice();
         }
 #if FELUCCA_UAC
         uac_render_start();
@@ -113,8 +116,26 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         }
         if (us > audio_max_us)
             audio_max_us = us;
+#if BOARD_SMK37
+        if (fm6_pr.ops > fm6_pr.ops_max)                /* (the probe: FM6's worst half, §13v-2) */
+            fm6_pr.ops_max = fm6_pr.ops;
+        if (fm6_pr.vox > fm6_pr.vox_max)
+            fm6_pr.vox_max = fm6_pr.vox;
+        fm6_pr.ops = fm6_pr.vox = 0;
+#endif
         if ((shed_over & 3u) == 3u)
             shed_req = 1;                               /* two in a row */
+#ifdef SMK_HARM
+        {   /* (§13v-5: the halves under 70 % for ~0.5 s: a thinned lane voice back, one at a time) */
+            static uint8_t calm;
+            uint32_t all = fm1_ticks() - t0;
+            calm = all / FM1_TICKS_PER_US * 100u <= (HALF_FRAMES * 1000000u / FS) * 70u ? (uint8_t)(calm < 255u ? calm + 1u : 255u) : 0u;
+            if (calm >= 86u) {
+                calm = 0;
+                hm_unthin_one();
+            }
+        }
+#endif
         song.cpu_q8 = (song.cpu_q8 * 15u + (us * 256u) / (HALF_FRAMES * 1000000u / FS)) / 16u;
         if (fm1_audio_free_half() != half)
             felucca_dbg.late++;                         /* the DMA moved on while we rendered */

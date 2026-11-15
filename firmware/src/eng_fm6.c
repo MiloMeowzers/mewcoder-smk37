@@ -238,6 +238,7 @@ static void fm6_sync(const track_t *t)
         if (k == 7u)
             return;
     }
+    FM6_PR(fm6_pr.syncs++);
     fm6_eff[tr].gen = fm6_pgen[tr];
     memcpy(fm6_eff[tr].p, fm6_patch[tr], FP_SIZE);
     for (k = 0; k < 7u; k++)
@@ -292,6 +293,7 @@ static void fm6_note_on(track_t *t, voice_t *v)
     const uint8_t *p;
     if (!n)
         return;
+    FM6_PR(fm6_pr.ons++);
     fm6_sync(t);
     p = fm6_eff[tr].p;
     fm6_note_init(n, p, (int32_t)v->note + p[FP_TRNSP] - 24, v->vel,
@@ -331,6 +333,7 @@ static void fm6_render(track_t *t, voice_t *v, int32_t *out, uint32_t len, const
     int32_t bus[FM6_N], lf, fb, lvl, k, a, da;
     if (!n || !n->live || len != FM6_N)
         return;
+    FM6_PR(fm6_pr.vox++);
     p = fm6_eff[tr].p;
     if (!v->gate && n->down)
         fm6_note_key(n, p, 0);

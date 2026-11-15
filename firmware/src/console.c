@@ -204,6 +204,12 @@ static void con_status(void)
     con_kv("shed_t1", (int32_t)shed_trk[0]);            /* (each part's, harmoniser-spec.md §13t) */
     con_kv("shed_t2", (int32_t)shed_trk[1]);
     con_kv("shed_t3", (int32_t)shed_trk[2]);
+    con_kv("fm6_ops_max", (int32_t)fm6_pr.ops_max);     /* (the probe, §13v-2: FM6's worst half since read; note-ons,
+                                                         * full patch rebuilds since read) */
+    con_kv("fm6_vox_max", (int32_t)fm6_pr.vox_max);
+    con_kv("fm6_ons", (int32_t)fm6_pr.ons);
+    con_kv("fm6_syncs", (int32_t)fm6_pr.syncs);
+    fm6_pr.ops_max = fm6_pr.vox_max = fm6_pr.ons = fm6_pr.syncs = 0;
 #endif
     con_kv("voices_given_up", (int32_t)voice_kills);
     con_kv("track", (int32_t)song.sel + 1);
@@ -489,12 +495,95 @@ static void con_bled(const char *p)
 #endif
 
 #ifdef SMK_HARM
+/* the probe's cache commands (smk37-devtools harmoniser-spec.md §13v-1; the AC79 SDK's cache_way_config and
+ * flush_all_dcache, cpu.a cache.c.o, read as LLVM IR): the data cache's ways 0-6 freed as RAM (0x1F28000, 28 KB), way 7
+ * kept; the instruction cache untouched. CACHE_CON 0x1EEE008 (b14 idle, b8 / b9 on), 0x1EEE00C the data ways (three
+ * 8-bit masks), 0x1EEE010 the instruction ways. Undone by a power cycle */
+#define CC_CON (*(volatile uint32_t *)0x1EEE008u)
+#define CC_DWAY (*(volatile uint32_t *)0x1EEE00Cu)
+#define CC_IWAY (*(volatile uint32_t *)0x1EEE010u)
+#define CC_RAM ((volatile uint32_t *)0x01F28000u)
+#define CC_WORDS (28u * 1024u / 4u)
+/* in RAM, interrupts off, core 1 idle in its RAM loop (the main loop: no audio interrupt running), no calls */
+static void __attribute__((section(".ram_text"), noinline, used)) cache_free_ram(void)
+{
+    volatile uint32_t *t = (volatile uint32_t *)0x01F00000u, *p;
+    uint32_t i, on;
+    __asm__ volatile("csync\n\tssync" ::: "memory");
+    for (i = 1u; i < 2048u; i += 2u) {                  /* every data way's dirty line written back first */
+        uint32_t tg = t[i];
+        if (tg & 0x40000u) {
+            uint32_t a = ((tg << 12) & 0x7FFF000u) | ((i << 4) & 0xFE0u);
+            __asm__ volatile("csync\n\tflush [%0]\n\tcsync" :: "r"(a) : "memory");
+        }
+    }
+    __asm__ volatile("csync\n\tssync" ::: "memory");
+    while (!(CC_CON & 0x4000u))
+        ;
+    on = CC_CON & 0x300u;
+    CC_CON &= ~0x300u;                                  /* the caches off */
+    CC_DWAY = (CC_DWAY & 0xFF000000u) | (1u << 7) | (1u << 15) | (1u << 23);   /* data way 7 only */
+    for (p = (volatile uint32_t *)0x01F00000u; p < (volatile uint32_t *)0x01F04000u; p++)
+        *p = 0;                                         /* the tags clear (as the SDK: the caches start empty) */
+    for (p = (volatile uint32_t *)0x01F0C000u; p < (volatile uint32_t *)0x01F0E200u; p++)
+        *p = 0;
+    for (p = (volatile uint32_t *)0x01F0F000u; p < (volatile uint32_t *)0x01F0F200u; p++)
+        *p = 0;
+    CC_CON |= on;                                       /* on again, as they were */
+    __asm__ volatile("csync" ::: "memory");
+}
+static uint32_t cache_pat(uint32_t i) { return (i * 2654435761u) ^ 0xA5C3F00Du; }
+static void cache_console(const char *p)
+{
+    if (con_word(&p, "free")) {
+        if ((CC_DWAY & 0x7Fu) == 0u) {
+            con_puts("cache: data ways 0-6 not caching already\r\n");
+        } else {
+            __asm__ volatile("cli" ::: "memory");
+            FL_FAR(cache_free_ram)();
+            __asm__ volatile("csync\n\tsti" ::: "memory");
+            con_puts("cache: data ways 0-6 freed\r\n");
+        }
+    }
+    if (con_word(&p, "test") || con_word(&p, "check")) {
+        uint32_t i, bad = 0, w = 1;
+        if (CC_DWAY & 0x7Fu) {
+            con_puts("cache test: refused, data ways 0-6 still caching (cache free first)\r\n");
+            return;
+        }
+        if (con_word(&p, "read"))
+            w = 0;                                      /* (cache test read: the pattern written before, checked) */
+        if (w)
+            for (i = 0; i < CC_WORDS; i++)
+                CC_RAM[i] = cache_pat(i);
+        for (i = 0; i < CC_WORDS; i++)
+            bad += CC_RAM[i] != cache_pat(i);
+        con_puts(w ? "cache test: 28 KB written and read back, errors " : "cache test read: errors ");
+        con_dec((int32_t)bad);
+        con_putc(13);
+        con_putc(10);
+    }
+    con_puts("cache con ");
+    con_hex(CC_CON, 8);
+    con_puts(" dways ");
+    con_hex(CC_DWAY, 8);
+    con_puts(" iways ");
+    con_hex(CC_IWAY, 8);
+    con_putc(13);
+    con_putc(10);
+}
+#endif
+#ifdef SMK_HARM
 /* the vocoder build: the harmoniser (smk_harm.h). "hprobe" (or "harm"): its state, the tracker's last period as Hz,
  * frames, voiced frames, the input's peak (as the probe printed them: the scratchpad's track.ps1 reads that part), then
  * the sung note, the voices' notes, the output's peak, REPEAT; the peaks cleared. "hprobe on|off" = HOME > HARMONY */
 static void hp_console(const char *p)
 {
-    int on = con_word(&p, "on") ? 1 : con_word(&p, "off") ? 0 : -1;
+    int on;
+    if (con_word(&p, "probe")) {                        /* harm probe eq | vox | off (§13v-3; not kept) */
+        hm_probe = (uint8_t)(con_word(&p, "eq") ? 1u : con_word(&p, "vox") ? 2u : 0u);
+    }
+    on = con_word(&p, "on") ? 1 : con_word(&p, "off") ? 0 : -1;
     uint32_t per = hm.per, f10 = per ? (uint32_t)(5512u * 2560u / per) : 0u, v;   /* deci-Hz at 5.5125 kHz (44100 / 8) */
     if (on >= 0)
         hm_set((uint32_t)on);
@@ -591,6 +680,28 @@ static void hp_console(const char *p)
         hv.steals = hv.waits = hv.drops = 0;
         con_putc(13);
         con_putc(10);
+        con_puts("  lanes (§13v): thin ");                  /* (LANE THIN, LANE RATE as masks, bit k lane k; mono now;
+                                                         * thinned voices per lane; thinned / back since read) */
+        con_hex(hm_thin, 1);
+        con_puts(" rate22 ");
+        con_hex(hm_lrate, 1);
+        con_puts(hm_lmono ? " mono-with-stems on" : " mono-with-stems off");
+        con_puts(" now ");
+        con_hex(hm_lmask, 1);
+        con_puts(" | thinned");
+        for (v = 0; v < HL_N; v++) {
+            con_putc(' ');
+            con_dec(hm_ln[v].th[0] + hm_ln[v].th[1] + hm_ln[v].th[2]);
+        }
+        con_puts(" | thins ");
+        con_dec((int32_t)hv.thins);
+        con_puts(" back ");
+        con_dec((int32_t)hv.unthins);
+        con_puts(" probe ");
+        con_puts(hm_probe == 1u ? "eq-off" : hm_probe == 2u ? "vox-off" : "off");
+        hv.thins = hv.unthins = 0;
+        con_putc(13);
+        con_putc(10);
         con_puts("  lanes in/out/write (int16 peaks), bank F:");   /* (§12: VOICE, T2, T3, DRUMS; cleared) */
         for (v = 0; v < 4u; v++) {
             con_puts(v == 0 ? " v " : v == 1 ? " t2 " : v == 2 ? " t3 " : " d ");
@@ -673,6 +784,8 @@ static void con_exec(const char *p)
 #ifdef SMK_HARM
     else if (con_word(&p, "hprobe") || con_word(&p, "harm"))
         hp_console(p);
+    else if (con_word(&p, "cache"))
+        cache_console(p);
 #endif
     else if (con_word(&p, "memr"))
         con_memr(p);

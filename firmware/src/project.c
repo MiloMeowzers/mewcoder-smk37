@@ -1106,6 +1106,9 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         voc_brmode = (uint8_t)(s.brmode & 1u);         /* (older: FIXED) */
         hm_set(s.harm & 1u);                           /* (older: OFF; taken at the next block, fx.c hm_apply) */
         hm_int = (uint8_t)((s.harm >> 1) & 1u);         /* (older: FIXED) */
+        hm_thin = (uint8_t)(((s.harm >> 2) & 15u) ^ HM_THIN_DEF);   /* LANE THIN, LANE RATE, LANE MONO (harmoniser-spec.md
+                                                         * §13v; older: 0 = the defaults) */
+        hm_lrate = (uint8_t)(s.rsv3 & 15u), hm_lmono = (uint8_t)(!((s.rsv3 >> 4) & 1u));
         if (s.hhave) {                                 /* the HARMONY page and banks E / F (older: as they are) */
             hset_t h;
             memcpy(&h, s.hset, sizeof h);
@@ -1162,8 +1165,9 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.trr = (uint8_t)(int8_t)((int32_t)(voc_trim[1] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
     vocset.mixv = 1;
     vocset.brmode = (uint8_t)(voc_brmode & 1u);
-    vocset.harm = (uint8_t)((hm_want & 1u) | (hm_int & 1u) << 1);   /* (as asked: the block's start may not have
-                                                     * taken it yet) */
+    vocset.harm = (uint8_t)((hm_want & 1u) | (hm_int & 1u) << 1 | ((hm_thin ^ HM_THIN_DEF) & 15u) << 2);   /* (as
+                                                     * asked: the block's start may not have taken it yet) */
+    vocset.rsv3 = (uint8_t)((hm_lrate & 15u) | (hm_lmono ? 0u : 16u));
     memcpy(vocset.hset, &hs, sizeof vocset.hset);
     vocset.hpit = (int8_t)clamp(hm_pitch, -64, 63), vocset.hfb = (uint8_t)(hm_fb & 127), vocset.hwd = (uint8_t)(hm_wd & 127);
     memcpy(vocset.hsend, hm_send, sizeof vocset.hsend);

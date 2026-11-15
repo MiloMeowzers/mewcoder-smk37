@@ -286,6 +286,7 @@ static void (*stem_commit)(uint32_t n);
 /* STEM FX (smk_tpunch.h, after punch.c): the stems' rhythmic punch-ins, applied where the stems are taken */
 static uint8_t tp_on, tp_live;
 static inline int32_t tp_x(uint32_t r, uint32_t i, int32_t x);
+static inline int32_t tp_xs(uint32_t r, uint32_t i, int32_t x, int32_t *dq);
 static void tp_zero(uint32_t r, uint32_t n);
 static uint8_t stem_k = 3;               /* the channels core 1 resamples (0..6) */
 static uint32_t stem_t0, stem_t1, stem_tch, stem_nb;   /* this half: core 0's and core 1's work (units + channels),
@@ -963,7 +964,7 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
                                                          * share now, §13o; the lane driven at unity) */
     int32_t *pl = 0, *pr = 0;
     hm_lane_t *L = &hm_ln[k % HL_N];
-    uint32_t i;
+    uint32_t i, mo = (hm_lmask >> (k % HL_N)) & 1u;    /* (§13v-6) */
     if (n > VOC_MAXN)
         n = VOC_MAXN;
     if (!L->run || !L->rok)                             /* (§13c: the send and the dry's share ramped across the block) */
@@ -987,10 +988,13 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
                 wl[i] = wr[i] = 0;
             L->run = 0, ran = 0;
         } else {
-            ran = hm_lane(k, in, wl, wr, 0, n);
+            if (!L->run)
+                hm_lane_start(k);                       /* (hm_lane is in RAM: it calls nothing in the flash, §13v-9) */
+            ran = TAIL_FAR(hm_lane)(k, in, wl, wr, 0, n);
         }
-        if (!ran && !loud) {                            /* the lane asleep, the dry silent: nothing to hear (the stems,
-                                                         * the pair: silence, as they were cleared) */
+        if (!ran && !loud && !tp_on) {                  /* the lane asleep, the dry silent: nothing to hear (the stems,
+                                                         * the pair: silence, as they were cleared; with STEM FX the
+                                                         * punch below still records and may replay) */
             if (st)
                 for (i = 0; i < n; i++)
                     st[i] = 0;
@@ -1006,11 +1010,20 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
         int32_t gd = (int32_t)(((int64_t)((kq * (int64_t)lv) >> 12) * gp) >> 15);
         int32_t gw = (int32_t)(((int64_t)((wq * (int64_t)lv) >> 12) * gp) >> 15);
         int32_t xd = hm_sc(x[i], gd), vl = hm_sc(VOC_VS(wl[i]), gw), vr = hm_sc(VOC_VS(wr[i]), gw);
-        int32_t m = xd + ((vl + vr) >> 1), xs, gl, gr, ol, orr, a = m < 0 ? -m : m;
+        int32_t m = xd + ((vl + vr) >> 1), xs, gl, gr, ol, orr, a, dq = 32768, e = 0;
+#if BOARD_SMK37
+        if (tp_on) {                                    /* STEM FX: the punch on the track's mono blend, the last thing
+                                                         * before its stem and sends (harmoniser-spec.md §13v-7) */
+            e = tp_xs(k % NPART, i, m, &dq);
+            if (dq != 32768)
+                m = (int32_t)(((int64_t)m * dq) >> 15) + e;
+        }
+#endif
+        a = m < 0 ? -m : m;
         if (a > *pk)
             *pk = a;                                    /* (the track's meter: what it sends on, after its fader) */
         if (st)
-            st[i] = m;                                  /* its stem: the dry and the voices, mono */
+            st[i] = m;                                  /* its stem: the dry and the voices, mono (punched) */
         xs = clamp(m, -xmax, xmax);
         if (c)
             mx->sc[i] += mulq15(xs, c);
@@ -1019,8 +1032,16 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
         if (r)
             mx->sr[i] += mulq15(xs, r);
         gl = gl0 + ((dgl * (int32_t)i) >> CTL_LOG2), gr = gr0 + ((dgr * (int32_t)i) >> CTL_LOG2);
-        ol = ((xd * (gl >> 4) + 128) >> 8) + vl, orr = ((xd * (gr >> 4) + 128) >> 8) + vr;   /* (the dry at the track's
-                                                         * pan, the voices at theirs) */
+        if (mo) {                                       /* (§13v-6: a mono lane: the blend at the track's pan, as an
+                                                         * unlaned track) */
+            ol = (m * (gl >> 4) + 128) >> 8, orr = (m * (gr >> 4) + 128) >> 8;
+        } else {
+            ol = ((xd * (gl >> 4) + 128) >> 8) + vl, orr = ((xd * (gr >> 4) + 128) >> 8) + vr;   /* (the dry at the
+                                                         * track's pan, the voices at theirs) */
+            if (dq != 32768)                            /* (a punch: each side its dry share, the effect at the pan) */
+                ol = (int32_t)(((int64_t)ol * dq) >> 15) + ((e * (gl >> 4) + 128) >> 8),
+                orr = (int32_t)(((int64_t)orr * dq) >> 15) + ((e * (gr >> 4) + 128) >> 8);
+        }
         mx->l[i] += ol, mx->r[i] += orr;
         if (pl)
             pl[i] = ol, pr[i] = orr;
@@ -1048,20 +1069,11 @@ static void hm_quiet(track_t *t, uint32_t k, uint32_t n, mixacc_t *mx, int32_t *
     uint32_t i;
 #if BOARD_SMK37
     st = stem_feed ? stem_syn[k % NPART] : 0;
-    if (tp_on && on && tp_live) {
-        for (i = 0; i < n; i++)
-            b[i] = tp_x(k % NPART, i, 0);
-    } else {
-        if (tp_on)
-            tp_zero(k % NPART, n);
-        for (i = 0; i < n; i++)
-            b[i] = 0;
-    }
-#else
+#endif
     (void)on;
     for (i = 0; i < n; i++)
-        b[i] = 0;
-#endif
+        b[i] = 0;                                       /* (the lane hears silence; STEM FX's punch, its recording and
+                                                         * replay, in hm_insert after the lane: §13v-7) */
     xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);
     hm_insert(k, b, n, mx, gl, 0, gr, 0, c, d, r, xmax, st, &pg, &pk);
     t->peak = pk;
@@ -1186,12 +1198,8 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
                                                          * punch-in) through the lane; LEVEL, mute x DUCK after it, then
                                                          * the pan, sends and stem (hm_insert) */
             hm_post_t pg;
-            pg.l0 = lvl0, pg.dl = dl, pg.ga = ga, pg.gb = gb;
-#if BOARD_SMK37
-            if (tp_on)
-                for (i = 0; i < n; i++)
-                    b[i] = tp_x((uint32_t)(t - trk) % NPART, i, b[i]);
-#endif
+            pg.l0 = lvl0, pg.dl = dl, pg.ga = ga, pg.gb = gb;   /* (STEM FX: the punch in hm_insert, after the
+                                                         * lane and LEVEL, §13v-7) */
             hm_insert((uint32_t)(t - trk), b, n, mx, gl0, dgl, gr0, dgr, c, d, r, xmax, st, &pg, &pk);
             TIM_LAP(TS_M1 + (uint32_t)(t - trk) % NPART, tc);
             t->peak = pk;
@@ -1461,9 +1469,12 @@ static int mix_drums_groups(uint32_t n, mixacc_t *mx, int flt, const tsvf_t *fc)
                     G[2][i] += G[3][i];
                 G[3][i] = 0;
             }
-        for (g = 0; g < ng; g++)
-            for (i = 0; i < n; i++)
-                G[g][i] = tp_x(3u + g, i, G[g][i]);
+#ifdef SMK_HARM
+        if (!drums_unity)                               /* (the drum lane runs: the punch after it, §13v-7) */
+#endif
+            for (g = 0; g < ng; g++)
+                for (i = 0; i < n; i++)
+                    G[g][i] = tp_x(3u + g, i, G[g][i]);
     }
     {   /* the pan and the sends, as slicer_drums */
         int32_t send = send_thr(song.g[G_DRREV] * 258, thr_rev), dsend = send_thr(song.g[G_DRDLY] * 258, thr_dly), pan = t->p[P_PAN];
@@ -1604,9 +1615,15 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 int32_t(*wb)[VOC_MAXN] = hm_wb[mx != &acc[0]];
                 int32_t *in = wb[0], *wl = wb[1], *wr = wb[2], sg = hm_wet(HL_DRUM), kd = hm_kd(HL_DRUM);   /* (§13o) */
                 int32_t dt = song.g[G_DRLVL] * 32768 / 100, d0, dd;
-                uint32_t v, sep = stem_feed && (stem_layout == 1u || stem_layout == 3u);   /* (§13l-1: the voices
-                                                         * apart only for DRUMS+RET / ALL DRY's drum channels; wl / wr the
-                                                         * same either way, hm_lane) */
+                uint32_t v, sep = dg_ran && (stem_layout == 1u || stem_layout == 3u);   /* (§13l-1: the voices apart
+                                                         * only for DRUMS+RET / ALL DRY's drum channels, the kit in its
+                                                         * groups; wl / wr the same either way, hm_lane) */
+                const uint32_t nch = sep ? (stem_layout == 1u ? 4u : 3u) : tp_on ? 1u : 0u;   /* (§13v-7: the drum
+                                                         * channels built here, after the lane: each its group (at the
+                                                         * dry's share, after DRUMS) and its voice, punched on its ring
+                                                         * when STEM FX plays; SYNTHS+RET: the kit and harmony as one) */
+                const int32_t dpan = TDRUM->p[P_PAN], pgl = 4096 - (dpan > 0 ? dpan * 64 : 0), pgr = 4096 + (dpan < 0 ? dpan * 64 : 0);
+                const int32_t prv = send_thr(song.g[G_DRREV] * 258, thr_rev), pdl = send_thr(song.g[G_DRDLY] * 258, thr_dly);
                 uint32_t snd = (uint32_t)(song.g[G_DRREV] | song.g[G_DRDLY]) | (uint32_t)(thr_rev | thr_dly);
                 int32_t *ppl = SP_ON(SP_DRUMS) ? stem_pl : 0;
                 hm_lane_t *L = &hm_ln[HL_DRUM];
@@ -1626,16 +1643,20 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 }
                 TIM_LAP(TS_DPRE, td);
                 {
-                    uint32_t ran = hm_lane(HL_DRUM, in, wl, wr, sep ? hm_dwv : 0, n);
+                    uint32_t ran;
+                    if (!L->run)
+                        hm_lane_start(HL_DRUM);         /* (hm_lane is in RAM: it calls nothing in the flash, §13v-9) */
+                    ran = TAIL_FAR(hm_lane)(HL_DRUM, in, wl, wr, sep ? hm_dwv : 0, n);
 #if SMK_TIMING
                     td = TIM_NOW();                     /* (the lane's own time: ln_d) */
 #endif
                     if (ran)
                         loud = 1;
                 }
-                if (!loud) {                            /* the lane asleep, the kit silent (the drums stopped; the
+                if (!loud && !tp_on) {                  /* the lane asleep, the kit silent (the drums stopped; the
                                                          * metronome would count as sound): under the floor, nothing
-                                                         * added; its stem silence */
+                                                         * added; its stem silence (STEM FX: on below, the punch still
+                                                         * records and may replay) */
                     for (i = 0; i < n; i++)
                         hm_dm[i] = 0;
                     hm_dran = 1;
@@ -1653,19 +1674,49 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                         gd = (int32_t)(((int64_t)kq * g) >> 15), gw = (int32_t)(((int64_t)wq * g) >> 15);   /* (Build
                                                          * 1.2: the blend and DRUMS folded, one product a path) */
                     }
+                    int32_t dq = 32768, e = 0;
                     ol = hm_sc(dk.l[i], gd) + hm_sc(VOC_VS(wl[i]), gw);
                     orr = hm_sc(dk.r[i], gd) + hm_sc(VOC_VS(wr[i]), gw);
+                    if (sep)
+                        for (v = 0; v < 3u; v++)
+                            hm_dwv[v][i] = hm_sc(hm_dwv[v][i], gw);   /* (the voices' drum channels, after DRUMS too) */
+                    if (nch == 1u) {                    /* (SYNTHS+RET with STEM FX: the drums as one channel) */
+                        e = tp_xs(3u, i, (ol >> 1) + (orr >> 1), &dq);
+                    } else if (nch) {                   /* (DRUMS+RET, ALL DRY: each channel its group and its voice) */
+                        uint32_t g;
+                        for (g = 0; g < nch; g++) {
+                            int32_t grp = drum_buf[g][i] + (nch == 3u && g == 2u ? drum_buf[3][i] : 0);   /* (ALL DRY:
+                                                         * HATS + PERC one channel) */
+                            int32_t c = hm_sc(grp, gd) + (g < 3u ? VOC_VS(hm_dwv[g][i]) : 0), d2 = 32768, ec = 0;
+                            if (tp_on) {
+                                ec = tp_xs(3u + g, i, c, &d2);
+                                dq = d2, e += ec;
+                                if (d2 != 32768)
+                                    c = (int32_t)(((int64_t)c * d2) >> 15) + ec;
+                            }
+                            drum_buf[g][i] = c;         /* (the tail takes the channel as it is) */
+                        }
+                        if (nch == 3u)
+                            drum_buf[3][i] = 0;
+                    }
+                    if (dq != 32768) {                  /* (a punch: each side its dry share, the effect at the pan) */
+                        ol = (int32_t)(((int64_t)ol * dq) >> 15) + ((e * (pgl >> 4) + 128) >> 8);
+                        orr = (int32_t)(((int64_t)orr * dq) >> 15) + ((e * (pgr >> 4) + 128) >> 8);
+                    }
                     if (snd) {                          /* (the drums' sends: nothing to add at 0) */
-                        mx->sr[i] += hm_sc(dk.sr[i], gd);
-                        mx->sd[i] += hm_sc(dk.sd[i], gd);
+                        int32_t sr = hm_sc(dk.sr[i], gd), sd = hm_sc(dk.sd[i], gd);
+                        if (dq != 32768) {
+                            int32_t ex = clamp(e, -65535, 65535);
+                            sr = (int32_t)(((int64_t)sr * dq) >> 15) + (prv ? mulq15(ex, prv) : 0);
+                            sd = (int32_t)(((int64_t)sd * dq) >> 15) + (pdl ? mulq15(ex, pdl) : 0);
+                        }
+                        mx->sr[i] += sr;
+                        mx->sd[i] += sd;
                     }
                     mx->l[i] += ol, mx->r[i] += orr;
                     hm_dm[i] = (ol >> 1) + (orr >> 1);  /* (SYNTHS+RET's DRUMS channel) */
                     if (ppl)
                         ppl[i] = ol, stem_pr[i] = orr;  /* (the STEREO PAIR: the drums after their lane) */
-                    if (sep)
-                        for (v = 0; v < 3u; v++)
-                            hm_dwv[v][i] = hm_sc(hm_dwv[v][i], gw);   /* (the voices' drum channels, after DRUMS too) */
                 }
                 }
                 hm_dran = 1;
@@ -2092,8 +2143,16 @@ static void mix_block(int32_t *out, uint32_t n)
 #if !MIX_PIPE
     hm_dran = 0;                                        /* (the pipeline: after the tail, below; the tail reads it) */
 #endif
-    if (hm_on)
+    if (hm_on) {
         hm_block();                                     /* the lanes' shared values, before either core's units */
+#if BOARD_SMK37
+        {   /* §13v-6: the lanes mono while the stems stream (LANE MONO), but a track on the STEREO PAIR */
+            uint32_t pb = stem_layout == 2u ? (smk_pair == SP_DRUMS ? 1u << HL_DRUM
+                                               : smk_pair >= SP_T1 && smk_pair < SP_N ? 1u << (smk_pair - SP_T1) : 0u) : 0u;
+            hm_lmask = (uint8_t)(hm_lmono && stem_feed ? 15u & ~pb : 0u);
+        }
+#endif
+    }
 #endif
 #if BOARD_SMK37 && !MIX_PIPE
     if (stem_feed && stem_layout == 2u && smk_pair)     /* STEREO PAIR: its source writes it this block (silent: 0) */
@@ -2327,18 +2386,8 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
             if (stem_layout == 2u) {                    /* SYNTHS+RET: the drums after their lane */
                 for (i = 0; i < n; i++)
                     stem_stage[3][i] = hm_dm[i];
-            } else if (stem_layout == 1u || stem_layout == 3u) {   /* DRUMS+RET, ALL DRY: each voice on a drum channel
-                                                         * (V1 KICK, V2 SNARE, V3 HATS / HATS+PERC), the groups at the
-                                                         * dry's gain (PERC in DRUMS+RET: dry only) */
-                uint32_t c0 = stem_layout == 1u ? 0u : 3u, ce = stem_layout == 1u ? 4u : 6u, v;
-                int32_t kd = hm_dkd;
-                for (c = c0; c < ce; c++)
-                    for (i = 0; i < n; i++)
-                        stem_stage[c][i] = hm_sc(stem_stage[c][i], kd);
-                for (v = 0; v < 3u; v++)
-                    for (i = 0; i < n; i++)
-                        stem_stage[c0 + v][i] += VOC_VS(hm_dwv[v][i]);
-            }
+            }                                           /* (DRUMS+RET, ALL DRY: each drum channel, its group and its
+                                                         * voice, built and punched in the drum unit: §13v-7) */
         }
 #endif
         if (stem_layout == 2u && smk_pair && smk_pair < SP_N) {   /* STEREO PAIR: the source in stereo on 5-6, the
@@ -2352,12 +2401,17 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
         if (tp_on && punch.cur == PX_FREEZE && punch.g) {   /* STEM FX: FREEZE on the stems: the dry ones fade under
                                                          * the held reverb (RET) as the master's dry mix does (PX_FRZ_CAP
                                                          * samples, by the punch-in's share); ALL DRY: all six */
-            uint32_t c1 = stem_layout == 3u ? 6u : 4u, t0 = punch.t >= n ? punch.t - n : 0u;
+            uint32_t c1 = stem_layout == 3u ? 6u : 4u, t0 = punch.t >= n ? punch.t - n : 0u, dry = (1u << c1) - 1u;
+            if (stem_layout == 2u && smk_pair && smk_pair < SP_N)   /* (the STEREO PAIR: the RET moved into the pair
+                                                         * source's slot, the source on 5-6: those fade, the RET holds;
+                                                         * harmoniser-spec.md §13u-4a) */
+                dry = (15u & ~(1u << (smk_pair == SP_DRUMS ? 3u : (uint32_t)smk_pair - SP_T1))) | 48u;
             for (i = 0; i < n; i++) {
                 int32_t f = t0 + i < PX_FRZ_CAP ? (int32_t)((t0 + i) << 2) : 32767;
                 int32_t g = 32767 - (int32_t)(((int64_t)f * punch.g) >> 15);
-                for (c = 0; c < c1; c++)
-                    stem_stage[c][i] = (int32_t)(((int64_t)stem_stage[c][i] * g) >> 15);
+                for (c = 0; c < 6u; c++)
+                    if ((dry >> c) & 1u)
+                        stem_stage[c][i] = (int32_t)(((int64_t)stem_stage[c][i] * g) >> 15);
             }
         }
         stem_sm0 = stem_sm1 = 4096;                     /* a fixed level: the stems do not follow MASTER (the DAW

@@ -344,6 +344,41 @@ static inline int32_t tp_x(uint32_t r, uint32_t i, int32_t x)
         return w;
     return (int32_t)(((int64_t)x * tp_xd[i] + (int64_t)w * tp_xg[i]) >> 15);
 }
+/* tp_x split (harmoniser-spec.md §13v-7): the same ring and step, x recorded, the punch returned as its dry share (*dq,
+ * Q15: 32768 = x passes as it is) and its effect part, so a stereo track can take the punch of its mono blend: each side
+ * x its share, plus the effect part at the track's pan. Within 1 LSB of tp_x when a punch fades */
+static inline int32_t tp_xs(uint32_t r, uint32_t i, int32_t x, int32_t *dq)
+{
+    int16_t *b = tp_ring[r];
+    int32_t w;
+    if (tp_wr[i]) {
+        if (tp_wr[i] == 1u)
+            b[tp_wi[i]] = (int16_t)clamp((tp.s == 1u ? x : (tp_half[r] + x) >> 1) >> 3, -32768, 32767);
+    } else {
+        tp_half[r] = x;
+    }
+    if (!tp_md[i] || !tp_xg[i]) {
+        *dq = 32768;
+        return 0;
+    }
+    if (tp_md[i] == 2u) {
+        w = x;
+    } else {
+        int32_t a = b[tp_ia[i]], c = b[tp_ib[i]];
+        w = (a + (((c - a) * tp_fr[i]) >> 15)) << 3;
+    }
+    w = (int32_t)(((int64_t)w * tp_wg[i]) >> 15);
+    if (tp_md[i] == 3u) {
+        int32_t a = b[tp_ic[i]], c = b[tp_id[i]], v = (a + (((c - a) * tp_fr2[i]) >> 15)) << 3;
+        w += (int32_t)(((int64_t)v * tp_gb[i]) >> 15);
+    }
+    if (tp_xg[i] >= 32767) {
+        *dq = 0;
+        return w;
+    }
+    *dq = tp_xd[i];
+    return (int32_t)(((int64_t)w * tp_xg[i]) >> 15);
+}
 static void tp_zero(uint32_t r, uint32_t n)             /* a silent stem's block: its ring records the silence */
 {
     uint32_t i;

@@ -75,6 +75,15 @@ static int16_t hm_wd = 64;           /* WET / DRY 0 .. 127 (64: half each, exact
 static int16_t hm_r22v;              /* LANE RATE, FADER BANK E's column 4 (harmoniser-spec.md §13s): 0 .. 127, 64 and up
                                       * 22K (every lane's voices once a pair); an A/B, not kept: 44.1 at power-on */
 static volatile uint8_t hm_r22;      /* .. as the audio reads it (main.c smk_faders sets both) */
+/* the LANE settings (HOME > LANE THIN, LANE RATE, HARMONY > LANE MONO; harmoniser-spec.md §13v; kept: project.c vocset).
+ * Bit k: lane k (VOICE, T2, T3, DRUMS) */
+#define HM_THIN_DEF 7u                /* LANE THIN: VOICE, T2, T3 may thin under load; the drums never (the owner) */
+static uint8_t hm_thin = HM_THIN_DEF;
+static uint8_t hm_lrate;             /* LANE RATE: 22K (the voices once a pair); bank E column 4 (hm_r22) on top */
+static uint8_t hm_lmono = 1u;        /* LANE MONO: while the stems stream, the lanes mono (a track on the pair stereo) */
+static volatile uint8_t hm_lmask;    /* .. this block's mono lanes (fx.c, before the units) */
+static uint8_t hm_probe;             /* the probe (console harm probe, §13v-3): 1 every lane's feedback EQ off, 2 their
+                                      * voices off; 0 as normal. Not kept */
 /* the HARMONY page's settings (Stage 1b, harmoniser-spec.md §9; ui_hpage.c; kept: project.c vocset). The audio reads
  * them once a block */
 enum { HF_NORM, HF_EXT, HF_SHARP, HF_FLAT, HF_N };   /* a voice's function (FUNCTION SELECT IN; EXTEND: Stage 2) */
@@ -156,6 +165,8 @@ typedef struct {
     uint16_t quiet;                  /* blocks its input, voices and feedback have all been silent (§13f) */
     int32_t lg;                      /* its input limiter's gain, Q15 (0: not started; harmoniser-spec.md §13q) */
     int32_t pvl, pvr;                /* its last output sample's sums (L, R; LANE RATE 22K's in-between sample, §13s) */
+    uint8_t th[3];                   /* each voice thinned here under load (§13v-5: faded out; back when the load eases) */
+    uint16_t vlv[3];                 /* .. each voice's peak here last block (the quietest goes first) */
     uint32_t blk;                    /* hm_block's count when it last ran (§13n: a lane not run lately holds no voice) */
     uint16_t vg[3];                  /* each voice: the assignment its release state is for (hv.gen) */
     uint8_t vq[3], vc[3];            /* .. released: blocks of its output under HM_QTHR; closed here (B) */
@@ -240,6 +251,7 @@ static struct {
     uint16_t rb[3];                  /* blocks since its release */
     uint8_t wn[HM_WN], ws[HM_WN], wc;   /* notes waiting for a voice (§13n E), their holders, how many */
     uint32_t nblk;                   /* hm_block's count (a lane that ran lately: hm_lane_t blk) */
+    volatile uint32_t thins, unthins;   /* (§13v-5, the console's, cleared: lane voices thinned / back) */
     volatile uint32_t steals, waits, drops;   /* the console's (harm, cleared): a held voice taken (faded), a note that
                                       * had to wait, one let go before it got a voice */
 } hv;
@@ -672,7 +684,15 @@ static void __attribute__((noinline)) hm_block(void)
 /* lane k: n inputs (int16 scale, the lane's input level applied) into its memory; its voices' wet, WET applied, into
  * wl / wr (each voice at its pan) and, when wv, each voice apart (the drums' channels, §10c-2). The dry is the caller's
  * (hb.kd: its own signal, mono or stereo). The VOICE lane runs the tracker (INTERVALS SCALE) */
-static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in, int32_t *wl, int32_t *wr,
+/* hm_lane in RAM (harmoniser-spec.md §13v-9): the vocoder build's .ram_hot (fx.c RAMHOT's attributes; copied at boot,
+ * out of the flash and the cache both cores share). It may call nothing in the flash: its callers start the lane
+ * (hm_lane_start) and reach it through TAIL_FAR */
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+#define HM_RAMHOT __attribute__((section(".ram_hot"), noinline, used, flatten))
+#else
+#define HM_RAMHOT __attribute__((noinline))
+#endif
+static uint32_t HM_RAMHOT hm_lane(uint32_t k, const int32_t *in, int32_t *wl, int32_t *wr,
                                                   int32_t (*wv)[VOC_MAXN], uint32_t n)   /* 0: skipped, silent (§13f) */
 {
     hm_lane_t *L = &hm_ln[k % HL_N];
@@ -684,9 +704,7 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                                                          * DRY is T1's; a send lane's balance is bank F's, fx.c; the
                                                          * lane's own WET is unity: §13s, no product for it) */
     TIM_VOC_T(tl);                                      /* (§12: each lane's time, console "timing" ln_*) */
-    if (!L->run)
-        hm_lane_start(k);
-    L->blk = hv.nblk;
+    L->blk = hv.nblk;                                   /* (started by its caller: hm_lane_start is in the flash) */
     for (v = 0; v < 3u; v++)                            /* (§13n B: a new assignment, or held again: open) */
         if (L->vg[v] != hb.gen[v] || !hb.rl[v])
             L->vg[v] = hb.gen[v], L->vq[v] = 0, L->vc[v] = 0;
@@ -767,7 +785,10 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
             a2_ = hm_read(mr, wq, p2_ + HM_DQ);                                                                     \
             c_ = (((((a1_ * t1_ + a2_ * (32767 - t1_)) >> 15) * G) >> 15) * LG) >> 15;   /* (LEVEL, the mute) */    \
             vs += c_;                                                                                               \
-            sl += (c_ * PL) >> 12, sr += (c_ * PR) >> 12;             /* (its pan) */                               \
+            if (mo)                                                   /* (mono: no pan, §13v-6) */                  \
+                sl += c_;                                                                                           \
+            else                                                                                                    \
+                sl += (c_ * PL) >> 12, sr += (c_ * PR) >> 12;         /* (its pan) */                               \
             if (wv)                                                                                                 \
                 wv[V][i] = byp ? 0 : hm_knee(c_);                     /* (WET unity, §13s) */                       \
             if (t & 1u) {                                             /* (its meter: once a pair) */                \
@@ -776,10 +797,15 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
             }                                                                                                       \
         } while (0)
         uint32_t w = L->w, t = L->t;
-        int32_t half = L->half, fb = L->fb, eql = hb.eql, eqh = hb.eqh;
+        int32_t half = L->half, fb = L->fb, eql = hb.eql && hm_probe != 1u, eqh = hb.eqh && hm_probe != 1u;
         int32_t gA = L->g[0], gB = L->g[1], gC = L->g[2], pA = L->ph[0], pB = L->ph[1], pC = L->ph[2];
-        const int32_t gtA = L->vc[0] ? 0 : hb.gt[0], gtB = L->vc[1] ? 0 : hb.gt[1], gtC = L->vc[2] ? 0 : hb.gt[2];   /* (§13n
-                                                         * B: a released voice closed in this lane fades out here) */
+        const int32_t gtA = L->vc[0] | L->th[0] || hm_probe == 2u ? 0 : hb.gt[0];
+        const int32_t gtB = L->vc[1] | L->th[1] || hm_probe == 2u ? 0 : hb.gt[1];   /* (§13n B: a
+                                                         * released voice closed in this lane fades out here; §13v-5 a
+                                                         * thinned one too) */
+        const int32_t gtC = L->vc[2] | L->th[2] || hm_probe == 2u ? 0 : hb.gt[2];
+        const uint32_t mo = (hm_lmask >> (k % HL_N)) & 1u;   /* (§13v-6: mono while the stems stream: the voices summed,
+                                                         * one output to both sides) */
         const int32_t dA = hm.dinc[0], dB = hm.dinc[1], dC = hm.dinc[2];
         const int32_t lA = hb.lg[0], lB = hb.lg[1], lC = hb.lg[2], plA = hb.pl[0], plB = hb.pl[1], plC = hb.pl[2];
         const int32_t prA = hb.pr[0], prB = hb.pr[1], prC = hb.pr[2];
@@ -791,7 +817,7 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
              * below takes them); an open voice's fade (32767) without its product, the same value. LANE RATE 22K: the
              * voices once a pair, at its second sample (the feedback's), each stepping two samples; the first sample the
              * mean of the last pair's and this pair's */
-            const uint32_t lim = lg0 < 32768 || lg1 < 32768, st = hm_r22 ? 2u : 1u;
+            const uint32_t lim = lg0 < 32768 || lg1 < 32768, st = hm_r22 || ((hm_lrate >> (k % HL_N)) & 1u) ? 2u : 1u;
 #define HM_VF(G, P, GT, DN, LG, PL, PR, UV, ST, M) do {                                                            \
                 int32_t p_, p2_, t1_, a1_, a2_, c_;                                                                 \
                 if (G != GT) {                                                                                      \
@@ -818,7 +844,10 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                                                          * >> 15 is c_ - 1 above 0, c_ at or under: |c_| <= 32767) */ \
                 if (M)                                                                                              \
                     vs += c_;                                                                                       \
-                sl += (c_ * PL) >> 12, sr += (c_ * PR) >> 12;                                                       \
+                if (mo)                                                                                             \
+                    sl += c_;                                                                                       \
+                else                                                                                                \
+                    sl += (c_ * PL) >> 12, sr += (c_ * PR) >> 12;                                                   \
                 if (M) {                                                                                            \
                     c_ = c_ < 0 ? -c_ : c_;                                                                         \
                     UV = c_ > UV ? c_ : UV;                                                                         \
@@ -848,8 +877,13 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                     HM_VF(gA, pA, gtA, dA, lA, plA, prA, ui_v[0], 1, 0);
                     HM_VF(gB, pB, gtB, dB, lB, plB, prB, ui_v[1], 1, 0);
                     HM_VF(gC, pC, gtC, dC, lC, plC, prC, ui_v[2], 1, 0);
-                    sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
-                    wl[i] = hm_knee(sl), wr[i] = hm_knee(sr);
+                    sl = clamp(sl, -98301, 98301);
+                    if (mo) {
+                        wl[i] = wr[i] = hm_knee(sl);
+                    } else {
+                        sr = clamp(sr, -98301, 98301);
+                        wl[i] = hm_knee(sl), wr[i] = hm_knee(sr);
+                    }
                     sl = sr = 0;
                 }
                 if (!rep) {                             /* its second: one stored sample, the feedback in, soft-limited */
@@ -874,14 +908,23 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                         f = hm_bq(L->eq[1], hb.cq[1], f);
                     fb = f;
                 }
-                sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
-                if (st != 1u)                           /* (22K: the first sample between the pairs) */
-                    wl[i] = hm_knee((lsl + sl) >> 1), wr[i] = hm_knee((lsr + sr) >> 1);
-                lsl = sl, lsr = sr;
-                wl[i + 1u] = hm_knee(sl), wr[i + 1u] = hm_knee(sr);
-                ax = wl[i + 1u] < 0 ? -wl[i + 1u] : wl[i + 1u];
-                ar = wr[i + 1u] < 0 ? -wr[i + 1u] : wr[i + 1u];
-                ax = ax > ar ? ax : ar;
+                sl = clamp(sl, -98301, 98301);
+                if (mo) {                               /* (mono: one knee a sample, both sides) */
+                    if (st != 1u)
+                        wl[i] = wr[i] = hm_knee((lsl + sl) >> 1);
+                    lsl = lsr = sl;
+                    wl[i + 1u] = wr[i + 1u] = hm_knee(sl);
+                    ax = wl[i + 1u] < 0 ? -wl[i + 1u] : wl[i + 1u];
+                } else {
+                    sr = clamp(sr, -98301, 98301);
+                    if (st != 1u)                       /* (22K: the first sample between the pairs) */
+                        wl[i] = hm_knee((lsl + sl) >> 1), wr[i] = hm_knee((lsr + sr) >> 1);
+                    lsl = sl, lsr = sr;
+                    wl[i + 1u] = hm_knee(sl), wr[i + 1u] = hm_knee(sr);
+                    ax = wl[i + 1u] < 0 ? -wl[i + 1u] : wl[i + 1u];
+                    ar = wr[i + 1u] < 0 ? -wr[i + 1u] : wr[i + 1u];
+                    ax = ax > ar ? ax : ar;
+                }
                 po = ax > po ? ax : po;
                 ui_out = ax > ui_out ? ax : ui_out;
                 t += 2u;
@@ -941,9 +984,15 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                 lsl = lsr = 0;
             } else {                                    /* (WET unity, §13s: no product; it was sl x 32768 in 32 bits,
                                                          * which wrapped past 65535) */
-                sl = clamp(sl, -98301, 98301), sr = clamp(sr, -98301, 98301);
-                wl[i] = hm_knee(sl), wr[i] = hm_knee(sr);
-                lsl = sl, lsr = sr;
+                sl = clamp(sl, -98301, 98301);
+                if (mo) {
+                    wl[i] = wr[i] = hm_knee(sl);
+                    lsl = lsr = sl;
+                } else {
+                    sr = clamp(sr, -98301, 98301);
+                    wl[i] = hm_knee(sl), wr[i] = hm_knee(sr);
+                    lsl = sl, lsr = sr;
+                }
             }
             if (t & 1u) {                               /* (the meters: once a pair) */
                 int32_t ar = wr[i] < 0 ? -wr[i] : wr[i];
@@ -971,6 +1020,8 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                 if (L->vq[v] >= HM_RQB)
                     L->vc[v] = 1;
             }
+        for (v = 0; v < 3u; v++)                        /* (§13v-5: each voice's level here, for thinning's choice) */
+            L->vlv[v] = (uint16_t)(ui_v[v] > 65535 ? 65535 : ui_v[v]);
         if (!rep && ui_in <= HM_QTHR && ui_out <= HM_QTHR && af <= HM_QTHR && ui_v[0] <= HM_QTHR && ui_v[1] <= HM_QTHR &&
             ui_v[2] <= HM_QTHR)
             L->quiet = (uint16_t)(L->quiet < 0xFFFFu ? L->quiet + 1u : L->quiet);
@@ -1004,6 +1055,44 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
     }
     TIM_ADD(TS_LV + k % HL_N, TIM_NOW() - tl);
     return 1u;
+}
+/* thinning (harmoniser-spec.md §13v-5), audio.c on an overload (two halves in a row over 85 %): a lane voice faded out
+ * before a synth voice is shed: in the first lane (T3, T2, VOICE, then DRUMS) with LANE THIN on that runs and has a
+ * voice open, its quietest voice. 1: one thinned */
+static uint32_t hm_thin_one(void)
+{
+    static const uint8_t ORD[HL_N] = {HL_T3, HL_T2, HL_VOICE, HL_DRUM};
+    uint32_t j, v;
+    if (!hm_on)
+        return 0;
+    for (j = 0; j < HL_N; j++) {
+        hm_lane_t *L = &hm_ln[ORD[j]];
+        uint32_t best = 3u;
+        if (!((hm_thin >> ORD[j]) & 1u) || !L->run || !L->blk || hv.nblk - L->blk > 2u || L->quiet >= HM_QBLK)
+            continue;
+        for (v = 0; v < 3u; v++)
+            if (hb.gt[v] && !L->vc[v] && !L->th[v] && (best == 3u || L->vlv[v] < L->vlv[best]))
+                best = v;
+        if (best < 3u) {
+            L->th[best] = 1;
+            hv.thins++;
+            return 1;
+        }
+    }
+    return 0;
+}
+/* .. and back (audio.c, once the halves have stayed under 70 % for ~0.5 s): one voice, the last lanes thinned first */
+static void hm_unthin_one(void)
+{
+    static const uint8_t ORD[HL_N] = {HL_DRUM, HL_VOICE, HL_T2, HL_T3};
+    uint32_t j, v;
+    for (j = 0; j < HL_N; j++)
+        for (v = 0; v < 3u; v++)
+            if (hm_ln[ORD[j]].th[v]) {
+                hm_ln[ORD[j]].th[v] = 0;
+                hv.unthins++;
+                return;
+            }
 }
 /* T1's engine while HARMONY is on (voice.c track_render): the input routed to HARMONY at VOICE IN, n <= VOC_MAXN samples
  * on the track's scale; its chain (DIST, SLICER, LEVEL, the punch-in) then the VOICE lane (fx.c hm_insert); 1 (the chain
