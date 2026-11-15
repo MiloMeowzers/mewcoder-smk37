@@ -82,6 +82,9 @@ static uint8_t hm_thin = HM_THIN_DEF;
 static uint8_t hm_lrate;             /* LANE RATE: 22K (the voices once a pair); bank E column 4 (hm_r22) on top */
 static uint8_t hm_lmono = 1u;        /* LANE MONO: while the stems stream, the lanes mono (a track on the pair stereo) */
 static volatile uint8_t hm_lmask;    /* .. this block's mono lanes (fx.c, before the units) */
+static uint8_t hm_pcap[3];           /* POLY CAP (HOME > POLY CAP, §13w-2): T1..T3's most voices while HARMONY or the
+                                      * VOCODER runs, 0 OFF (full), 1..5; kept with the project and the unit (vocset) */
+#define HM_PCAP_MAX 5u
 static uint8_t hm_probe;             /* the probe (console harm probe, §13v-3): 1 every lane's feedback EQ off, 2 their
                                       * voices off; 0 as normal. Not kept */
 /* the HARMONY page's settings (Stage 1b, harmoniser-spec.md §9; ui_hpage.c; kept: project.c vocset). The audio reads
@@ -705,9 +708,13 @@ static uint32_t HM_RAMHOT hm_lane(uint32_t k, const int32_t *in, int32_t *wl, in
                                                          * lane's own WET is unity: §13s, no product for it) */
     TIM_VOC_T(tl);                                      /* (§12: each lane's time, console "timing" ln_*) */
     L->blk = hv.nblk;                                   /* (started by its caller: hm_lane_start is in the flash) */
-    for (v = 0; v < 3u; v++)                            /* (§13n B: a new assignment, or held again: open) */
+    for (v = 0; v < 3u; v++) {                          /* (§13n B: a new assignment, or held again: open) */
+        if (L->vg[v] != hb.gen[v] || !hb.gt[v])
+            L->th[v] = 0;                               /* (§13w-1: a thinned voice's flag ends with the voice: a new
+                                                         * note on it, or it closed) */
         if (L->vg[v] != hb.gen[v] || !hb.rl[v])
             L->vg[v] = hb.gen[v], L->vq[v] = 0, L->vc[v] = 0;
+    }
     if (L->quiet >= HM_QBLK && !rep) {                  /* (§13f: asleep; a block of input above the floor wakes it) */
         uint32_t m = n > VOC_MAXN ? VOC_MAXN : n, a = 0;
         for (i = 0; i < m; i++) {
@@ -902,9 +909,10 @@ static uint32_t HM_RAMHOT hm_lane(uint32_t k, const int32_t *in, int32_t *wl, in
                 {
                     int32_t f = clamp(vs, -65535, 65535) * fb1;
                     f = (f + (f < 0 ? 32767 : 0)) >> 15;
-                    if (eql)
-                        f = hm_bq(L->eq[0], hb.cq[0], f);
-                    if (eqh)
+                    if (eql && (f | L->eq[0][0] | L->eq[0][1] | L->eq[0][2] | L->eq[0][3]))
+                        f = hm_bq(L->eq[0], hb.cq[0], f);   /* (§13w-3: an input 0 into a state all 0 gives 0 and leaves
+                                                         * the state 0: skipped, the same) */
+                    if (eqh && (f | L->eq[1][0] | L->eq[1][1] | L->eq[1][2] | L->eq[1][3]))
                         f = hm_bq(L->eq[1], hb.cq[1], f);
                     fb = f;
                 }
@@ -1056,32 +1064,35 @@ static uint32_t HM_RAMHOT hm_lane(uint32_t k, const int32_t *in, int32_t *wl, in
     TIM_ADD(TS_LV + k % HL_N, TIM_NOW() - tl);
     return 1u;
 }
-/* thinning (harmoniser-spec.md §13v-5), audio.c on an overload (two halves in a row over 85 %): a lane voice faded out
- * before a synth voice is shed: in the first lane (T3, T2, VOICE, then DRUMS) with LANE THIN on that runs and has a
- * voice open, its quietest voice. 1: one thinned */
+/* thinning (harmoniser-spec.md §13v-5, §13w-1), audio.c on an overload (two halves in a row over 85 %): a lane voice
+ * faded out before a synth voice is shed. Only a voice that sounds (its gate open, its output here above the floor);
+ * the lane with the fewest thinned already (no lane stripped bare while another has an open voice), T3, T2, VOICE, then
+ * DRUMS on a tie; its quietest voice. 1: one thinned */
 static uint32_t hm_thin_one(void)
 {
     static const uint8_t ORD[HL_N] = {HL_T3, HL_T2, HL_VOICE, HL_DRUM};
-    uint32_t j, v;
+    uint32_t j, v, bl = HL_N, bv = 3u, bn = 4u;
     if (!hm_on)
         return 0;
     for (j = 0; j < HL_N; j++) {
         hm_lane_t *L = &hm_ln[ORD[j]];
-        uint32_t best = 3u;
+        uint32_t best = 3u, nth = (uint32_t)L->th[0] + L->th[1] + L->th[2];
         if (!((hm_thin >> ORD[j]) & 1u) || !L->run || !L->blk || hv.nblk - L->blk > 2u || L->quiet >= HM_QBLK)
             continue;
         for (v = 0; v < 3u; v++)
-            if (hb.gt[v] && !L->vc[v] && !L->th[v] && (best == 3u || L->vlv[v] < L->vlv[best]))
+            if (hb.gt[v] && !L->vc[v] && !L->th[v] && L->vlv[v] > HM_QTHR && (best == 3u || L->vlv[v] < L->vlv[best]))
                 best = v;
-        if (best < 3u) {
-            L->th[best] = 1;
-            hv.thins++;
-            return 1;
-        }
+        if (best < 3u && nth < bn)
+            bl = ORD[j], bv = best, bn = nth;
+    }
+    if (bl < HL_N) {
+        hm_ln[bl].th[bv] = 1;
+        hv.thins++;
+        return 1;
     }
     return 0;
 }
-/* .. and back (audio.c, once the halves have stayed under 70 % for ~0.5 s): one voice, the last lanes thinned first */
+/* .. and back (audio.c, once ~2 s have passed with no half over 75 %, §13w-1): one voice, the last lanes thinned first */
 static void hm_unthin_one(void)
 {
     static const uint8_t ORD[HL_N] = {HL_DRUM, HL_VOICE, HL_T2, HL_T3};

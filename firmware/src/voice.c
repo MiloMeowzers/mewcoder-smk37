@@ -658,7 +658,39 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
         t->lfo_fade = 0;
     }
     if (mode == V_POLY) {
-        voice_t *v = voice_alloc(t, note);
+        voice_t *v;
+#ifdef SMK_HARM
+        {   /* POLY CAP (harmoniser-spec.md §13w-2): while HARMONY or the VOCODER runs, a track with a cap keeps that many
+             * voices at most: the next note takes room from its own voices (a releasing one first, the quietest; else
+             * the oldest held), faded as the budget's steal is (voice_kill) */
+            uint32_t k = (uint32_t)(t - trk), cap = k < 3u ? hm_pcap[k] : 0u;
+            if (cap && cap <= HM_PCAP_MAX && (hm_on || (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW))) {
+                for (;;) {
+                    uint32_t n = 0, j;
+                    voice_t *best = 0;
+                    for (j = 0; j < NVOICE; j++)
+                        n += t->v[j].active && t->v[j].stage != 4u;
+                    if (n < cap)
+                        break;
+                    for (j = 0; j < NVOICE; j++) {
+                        voice_t *w = &t->v[j];
+                        if (w->active && !w->gate && w->stage != 4u && (!best || w->env < best->env))
+                            best = w;
+                    }
+                    if (!best)
+                        for (j = 0; j < NVOICE; j++) {
+                            voice_t *w = &t->v[j];
+                            if (w->active && w->gate && w->stage != 4u && (!best || w->age < best->age))
+                                best = w;
+                        }
+                    if (!best)
+                        break;
+                    voice_kill(best);
+                }
+            }
+        }
+#endif
+        v = voice_alloc(t, note);
         t->nmono = 0;                                   /* no stale mono stack after a mode change */
         t->mono_note = 0;
         v->fine = 0;

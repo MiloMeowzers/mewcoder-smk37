@@ -1920,7 +1920,18 @@ static uint32_t uac6_probe_packet(uint8_t *d)
 /* TIMER5: a packet received on UIN_EP OUT (one a ms; polled at 2 kHz, so each is taken before the next; nested in the
  * render too, main.c): its frames into the ring, then the FIFO released (as ep3_rx). OverRun: a packet came while one
  * waited (lost) */
-static void uin_rx(void)
+/* (smk37-devtools harmoniser-spec.md §13w-5) the vocoder build: the USB stems' service and the audio in's receive in
+ * RAM (.ram_hot; their two SIE helpers inlined): out of the flash and the cache the busy halves fight over, where their
+ * time grew with the load (TIMER5 376 -> 618 us a half). Called through T5_FAR (RAM and the flash are beyond a call) */
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+#define T5HOT __attribute__((section(".ram_hot"), noinline, used, flatten))
+static inline void *t5_far(void *p) { void *volatile q = p; return q; }
+#define T5_FAR(fn) ((__typeof__(&fn))t5_far((void *)&fn))
+#else
+#define T5HOT
+#define T5_FAR(fn) (fn)
+#endif
+static void T5HOT uin_rx(void)
 {
     uint32_t csr, n, i, w;
     uint32_t now, gap;
@@ -2127,7 +2138,7 @@ static void uin_block(uint32_t n)                       /* fx.c mix_block: the i
  * next one as soon as the last has gone (TxPktRdy clear). Not paced on SOF-pending (see usb_poll).
  * The ring is fed only while the host reads: it often selects alt 1 long before its first IN token,
  * and a recorder may stop reading without going back to alt 0 (a packet waiting > 20 ms). */
-static void uac_service(void)
+static void T5HOT uac_service(void)
 {
     uint32_t csr, n;
     if (!usb.up || !usb.config || !uac.alt)
@@ -2275,10 +2286,10 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
     }
 #endif
 #if SMK_UAC_IN_PROBE
-    uin_rx();                                           /* (before the stems' packet: its loopback reads the ring) */
+    T5_FAR(uin_rx)();                                   /* (before the stems' packet: its loopback reads the ring) */
 #endif
 #if FELUCCA_UAC
-    uac_service();
+    T5_FAR(uac_service)();
 #endif
 }
 

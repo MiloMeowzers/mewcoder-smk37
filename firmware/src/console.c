@@ -499,30 +499,10 @@ static void con_bled(const char *p)
  * flush_all_dcache, cpu.a cache.c.o, read as LLVM IR): the data cache's ways 0-6 freed as RAM (0x1F28000, 28 KB), way 7
  * kept; the instruction cache untouched. CACHE_CON 0x1EEE008 (b14 idle, b8 / b9 on), 0x1EEE00C the data ways (three
  * 8-bit masks), 0x1EEE010 the instruction ways. Undone by a power cycle */
-static void cache_console(const char *p)
+static void cache_console(const char *p)               /* (read-only since Build 1.7: the registers) */
 {
     uint32_t con, dw, iw;
-    if (con_word(&p, "free")) {
-        if (!fm1_cache_dways_busy()) {
-            con_puts("cache: data ways 0-6 not caching already\r\n");
-        } else {
-            fm1_cache_free_dways();
-            con_puts("cache: data ways 0-6 freed\r\n");
-        }
-    }
-    if (con_word(&p, "test") || con_word(&p, "check")) {
-        int w = 1;
-        if (fm1_cache_dways_busy()) {
-            con_puts("cache test: refused, data ways 0-6 still caching (cache free first)\r\n");
-            return;
-        }
-        if (con_word(&p, "read"))
-            w = 0;                                      /* (cache test read: the pattern written before, checked) */
-        con_puts(w ? "cache test: 28 KB written and read back, errors " : "cache test read: errors ");
-        con_dec((int32_t)fm1_cache_ram_test(w));
-        con_putc(13);
-        con_putc(10);
-    }
+    (void)p;
     fm1_cache_regs(&con, &dw, &iw);
     con_puts("cache con ");
     con_hex(con, 8);

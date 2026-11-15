@@ -63,6 +63,8 @@ enum { MI_COLOR, MI_ZOOM,
        MI_LT0, MI_LT1, MI_LT2, MI_LT3,             /* LANE THIN > VOICE, T2, T3, DRUMS (smk_harm.h hm_thin: a lane's voices
                                                     * may fade under load; kept, project.c; harmoniser-spec.md §13u) */
        MI_LR0, MI_LR1, MI_LR2, MI_LR3,             /* LANE RATE > VOICE, T2, T3, DRUMS (hm_lrate: 44.1 / 22K; kept) */
+       MI_PC1, MI_PC2, MI_PC3,                     /* POLY CAP > T1, T2, T3 (hm_pcap: OFF, 1..5 while HARMONY / the VOCODER
+                                                    * runs; kept with the project, §13w-2) */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -102,6 +104,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
                                               "ATTACK", "RELEASE", "GATE DELAY", "BRIDGE MODE", "HARMONY", "INTERVALS", "SUNG NOTE",
                                               "LANE MONO", "VOICE", "T2", "T3", "DRUMS", "VOICE", "T2", "T3", "DRUMS",
+                                              "T1", "T2", "T3",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -114,13 +117,13 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #if BOARD_SMK37
 #if SMK_UAC_IN_PROBE
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV,
-       MS_HARM, MS_LTHIN, MS_LRATE, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+       MS_HARM, MS_LTHIN, MS_LRATE, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
                                               "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "HARMONY", "LANE THIN",
-                                              "LANE RATE", "SEQ", "PLAY", "MIDI",
+                                              "LANE RATE", "POLY CAP", "SEQ", "PLAY", "MIDI",
                                               "DAW", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
-                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_ADV,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_PC1, MI_ADV,
                                                MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
@@ -134,7 +137,7 @@ static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, M
 #endif
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
 #if SMK_UAC_IN_PROBE
-               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_HON - MI_VEATT <= 4 && MI_LT0 - MI_HON <= 4 && MI_LR0 - MI_LT0 <= 4 && MI_ADV - MI_LR0 <= 4 &&
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_HON - MI_VEATT <= 4 && MI_LT0 - MI_HON <= 4 && MI_LR0 - MI_LT0 <= 4 && MI_PC1 - MI_LR0 <= 4 && MI_ADV - MI_PC1 <= 4 &&
 #else
                MI_ADV - MI_VOC0 <= 4 &&
 #endif
@@ -433,6 +436,22 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
                                                        * song's key (dim: HARMONY off) */
         *c = hm_on ? C_HI : C_DIM;
         return hm_int ? "SCALE" : "FIXED";
+    case MI_PC1: case MI_PC2: case MI_PC3: {          /* POLY CAP (§13w-2): the value, dimmed with why where it does
+                                                       * nothing (kept: it acts again when the engine or mode changes) */
+        static char b[14];
+        uint32_t k = i - MI_PC1, cp = hm_pcap[k];
+        const track_t *t = &trk[k];
+        int na = (k == 0u && hm_on) || VOC_TRK_AUDIO(t) || TRK_VMODE(t) != V_POLY;
+        *c = !cp || na || cp >= NVOICE || !(hm_on || (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW)) ? C_DIM : C_HI;
+        if (!cp)
+            return "OFF";
+        b[0] = (char)('0' + cp), b[1] = 0;
+        if (na)
+            str_cpy(b + 1, " N/A", 13);
+        else if (cp >= NVOICE)
+            str_cpy(b + 1, " NO EFFECT", 13);
+        return b;
+    }
     case MI_LMONO:                                    /* the lanes mono while the stems stream (§13v-6) */
         *c = hm_on ? C_HI : C_DIM;
         return hm_lmono ? "WITH STEMS" : "OFF";
@@ -1054,6 +1073,12 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     case MI_HNOTE:                                     /* (a readout) */
         break;
+    case MI_PC1: case MI_PC2: case MI_PC3: {           /* right up, left down (OFF below 1); OCT+ back to OFF */
+        uint32_t k = i - MI_PC1;
+        int32_t v = s ? (int32_t)hm_pcap[k] + s : 0;
+        hm_pcap[k] = (uint8_t)(v < 0 ? 0 : v > (int32_t)HM_PCAP_MAX ? HM_PCAP_MAX : v);
+        break;
+    }
     case MI_LMONO:                                     /* right ON, left OFF; OCT+ toggles */
         hm_lmono = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !hm_lmono);
         break;

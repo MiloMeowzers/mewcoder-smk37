@@ -259,9 +259,19 @@ def build_app():
         rule = "KEEP(*(.text.crt0)) *(.text*)"
         if txt.count(rule) != 1:
             raise SystemExit("app.ld: the .text rule was not found")
+        txt = txt.replace(rule, "KEEP(*(.text.crt0)) " + " ".join(f"*(.text.{f})" for f in HOT_TEXT) + " *(.text*)")
+        # (smk37-devtools harmoniser-spec.md §13w-5) the main stack 24 -> 16 KB (peak 3.3 KB measured: the editor's
+        # upload, a save, the menus), the pool +8 KB (its 8 KiB headroom kept), the low RAM's data into the pool: the
+        # RAM code window for the hot code (hm_lane, the USB stems' service)
+        for a, b in (("POOL   (rw)  : ORIGIN = 0x01C20000, LENGTH = 0x54000", "POOL   (rw)  : ORIGIN = 0x01C20000, LENGTH = 0x56000"),
+                     ("_guard0 = 0x01C74000; _ustack_lo = 0x01C74100;", "_guard0 = 0x01C76000; _ustack_lo = 0x01C76100;"),
+                     ("*(.bss.c1stack) *(.lowram*) . = ALIGN(4); _lr_end = .; } > RAMTEXT",
+                      "*(.bss.c1stack) *(.lowram*) . = ALIGN(4); _lr_end = .; } > POOL")):
+            if txt.count(a) != 1:
+                raise SystemExit(f"app.ld: {a!r} not found")
+            txt = txt.replace(a, b)
         ld = OUT / "app.ld"
-        ld.write_text(txt.replace(rule, "KEEP(*(.text.crt0)) " + " ".join(f"*(.text.{f})" for f in HOT_TEXT) +
-                                  " *(.text*)"))
+        ld.write_text(txt)
     tc("pi32v2/bin/ld", "-T", ld, OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
        OUT / "fm1_cpu1.o", OUT / "felucca.o", "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "ramhot.bin"):
@@ -361,14 +371,16 @@ def check(img, syms, dis, rt):
         mm = re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M)
         return int(mm.group(1), 16) if mm else 0
     bss = sym("_bss_end") - 0x01C08000
-    pool = sym("_pool_end") - sym("_pool_start")
+    pool_len = 0x56000 if os.environ.get("SMK_VOC_LEAN") == "1" else 0x54000   # (the vocoder build: the pool +8 KB)
+    pool = max(sym("_pool_end"), sym("_lr_end") if sym("_lr_start") >= 0x01C20000 else 0) - 0x01C20000
     lowram = sym("_lr_end") - sym("_lr_start")    # the SRAM below the RAM region (app.ld .lowram), up to 0x01C07F00
-    notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of 98304; lowram {lowram} B of "
-                 f"{0x01C07F00 - sym('_lr_start')}; pool {pool} B of {0x54000}")
+    lr_where = (f"lowram {lowram} B in the pool" if sym("_lr_start") >= 0x01C20000 else
+                f"lowram {lowram} B of {0x01C07F00 - sym('_lr_start')}")
+    notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of 98304; {lr_where}; pool {pool} B of {pool_len}")
     if bss > 96 * 1024:
         errors.append("RAM region overflow")
-    if 0x54000 - pool < 8192:                     # keep >= 8 KiB of the pool spare
-        errors.append(f"pool headroom {0x54000 - pool} B < 8192 B")
+    if pool_len - pool < 8192:                    # keep >= 8 KiB of the pool spare
+        errors.append(f"pool headroom {pool_len - pool} B < 8192 B")
     return errors, notes
 
 

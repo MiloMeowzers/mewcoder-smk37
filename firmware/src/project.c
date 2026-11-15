@@ -1006,6 +1006,9 @@ typedef struct {
     int8_t hpit;
     uint8_t hfb, hwd, hsend[4], hhave, hspread, spair;   /* (+ G3 K5 SPREAD, USB > STEREO PAIR: Stage 1c, the spare
                                           * bytes: 0 = none, RET, as before) */
+    uint8_t pcap[3], pchave;             /* POLY CAP (harmoniser-spec.md §13w-2): T1..T3 now; pchave bit k: slot k's below
+                                          * (an object of 512 bytes, before them: OFF, none) */
+    uint8_t pcsec[4][4];                 /* .. each project slot's (saved with it, applied when it loads) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
@@ -1013,7 +1016,9 @@ typedef struct {
 #define VOCSET_V4 472u                   /* (.. before ENVELOPE) */
 #define VOCSET_V5 476u                   /* (.. before the 12-step DRY / HF) */
 #define VOCSET_V6 480u                   /* (.. before the HARMONY page) */
-_Static_assert(sizeof(vocset_t) == VOCSET_V6 + 32u && __builtin_offsetof(vocset_t, hset) == VOCSET_V6 &&
+#define VOCSET_V7 512u                   /* (.. before POLY CAP) */
+_Static_assert(sizeof(vocset_t) == VOCSET_V7 + 20u && __builtin_offsetof(vocset_t, pcap) == VOCSET_V7 &&
+               __builtin_offsetof(vocset_t, hset) == VOCSET_V6 &&
                sizeof(hset_t) == sizeof(((vocset_t *)0)->hset), "vocset: the HARMONY page after the 480 bytes");
 _Static_assert(VOCSET_V6 == VOCSET_V5 + 4u && VOCSET_V5 == VOCSET_V4 + 4u && VOCSET_V4 == VOCSET_V3 + 5u * 80u && sizeof(vocpg_t) == 80u &&
                __builtin_offsetof(vocset_t, tilt) == VOCSET_V1 && __builtin_offsetof(vocset_t, norm) == VOCSET_V2 &&
@@ -1061,6 +1066,8 @@ static void vocset_cap(const project_t *p)
         vocv_get(&vocset.sec[k]);
         vocset.psec[k] = vpg;
         vocset.psec[k].have = 1;
+        memcpy(vocset.pcsec[k], hm_pcap, sizeof hm_pcap);   /* (POLY CAP with the project, §13w-2) */
+        vocset.pchave |= (uint8_t)(1u << k);
     }
 }
 static void vocset_load(const project_t *p)
@@ -1070,16 +1077,25 @@ static void vocset_load(const project_t *p)
         vocv_put(&vocset.sec[k]);
     if (p >= proj_slot && k < 4u && vocset.psec[k].have)
         vpg_put(&vocset.psec[k]);
+    if (p >= proj_slot && k < 4u && ((vocset.pchave >> k) & 1u)) {
+        uint32_t j;
+        for (j = 0; j < 3u; j++)
+            hm_pcap[j] = (uint8_t)(vocset.pcsec[k][j] > HM_PCAP_MAX ? 0u : vocset.pcsec[k][j]);
+    }
 }
-static void vocset_drop(uint32_t slot) { vocset.sec[slot & 3u].have = 0, vocset.psec[slot & 3u].have = 0; }
+static void vocset_drop(uint32_t slot)
+{
+    vocset.sec[slot & 3u].have = 0, vocset.psec[slot & 3u].have = 0;
+    vocset.pchave &= (uint8_t)~(1u << (slot & 3u));
+}
 /* an object of n bytes (as read from flash, or the editor's restore, backup object 14): 1 taken (the settings, the page
  * and each slot's set from it), 0 not one (nothing changes) */
 static int vocset_take(const uint8_t *b, uint32_t n)
 {
     static vocset_t s;                                 /* (472 bytes: not on the stack) */
     uint32_t k;
-    if (n != sizeof s && n != VOCSET_V6 && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 && n != VOCSET_V2 &&
-        n != VOCSET_V1)
+    if (n != sizeof s && n != VOCSET_V7 && n != VOCSET_V6 && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 &&
+        n != VOCSET_V2 && n != VOCSET_V1)
         return 0;
     memset(&s, 0, sizeof s);                           /* (an older, shorter object: the rest none / OFF) */
     memcpy(&s, b, n);
@@ -1109,6 +1125,8 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         hm_thin = (uint8_t)(((s.harm >> 2) & 15u) ^ HM_THIN_DEF);   /* LANE THIN, LANE RATE, LANE MONO (harmoniser-spec.md
                                                          * §13v; older: 0 = the defaults) */
         hm_lrate = (uint8_t)(s.rsv3 & 15u), hm_lmono = (uint8_t)(!((s.rsv3 >> 4) & 1u));
+        for (k = 0; k < 3u; k++)                       /* POLY CAP (§13w-2; older: OFF) */
+            hm_pcap[k] = (uint8_t)(s.pcap[k] > HM_PCAP_MAX ? 0u : s.pcap[k]);
         if (s.hhave) {                                 /* the HARMONY page and banks E / F (older: as they are) */
             hset_t h;
             memcpy(&h, s.hset, sizeof h);
@@ -1168,6 +1186,7 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.harm = (uint8_t)((hm_want & 1u) | (hm_int & 1u) << 1 | ((hm_thin ^ HM_THIN_DEF) & 15u) << 2);   /* (as
                                                      * asked: the block's start may not have taken it yet) */
     vocset.rsv3 = (uint8_t)((hm_lrate & 15u) | (hm_lmono ? 0u : 16u));
+    memcpy(vocset.pcap, hm_pcap, sizeof vocset.pcap);
     memcpy(vocset.hset, &hs, sizeof vocset.hset);
     vocset.hpit = (int8_t)clamp(hm_pitch, -64, 63), vocset.hfb = (uint8_t)(hm_fb & 127), vocset.hwd = (uint8_t)(hm_wd & 127);
     memcpy(vocset.hsend, hm_send, sizeof vocset.hsend);

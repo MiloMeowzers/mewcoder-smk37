@@ -126,11 +126,12 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         if ((shed_over & 3u) == 3u)
             shed_req = 1;                               /* two in a row */
 #ifdef SMK_HARM
-        {   /* (§13v-5: the halves under 70 % for ~0.5 s: a thinned lane voice back, one at a time) */
-            static uint8_t calm;
+        {   /* (§13w-1: ~2 s with no half over 75 %: a thinned lane voice back, one at a time; a busy half starts
+             * the count again) */
+            static uint16_t calm;
             uint32_t all = fm1_ticks() - t0;
-            calm = all / FM1_TICKS_PER_US * 100u <= (HALF_FRAMES * 1000000u / FS) * 70u ? (uint8_t)(calm < 255u ? calm + 1u : 255u) : 0u;
-            if (calm >= 86u) {
+            calm = all / FM1_TICKS_PER_US * 100u <= (HALF_FRAMES * 1000000u / FS) * 75u ? (uint16_t)(calm < 65535u ? calm + 1u : 65535u) : 0u;
+            if (calm >= 345u) {                         /* (345 halves of 5.8 ms: 2 s) */
                 calm = 0;
                 hm_unthin_one();
             }
