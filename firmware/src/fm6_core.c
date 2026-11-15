@@ -46,19 +46,35 @@ enum {
 
 /* ---------------------------------------------------------------- math --- */
 /* 2^(x / 2^24), Q24 (msfa Exp2::lookup): the Q30 mantissa from FM6_EXP2, shifted by the integer part */
-static inline uint32_t fm6_mant(int32_t x)
+/* FM6's render in RAM (smk37-devtools harmoniser-spec.md §13w, 1.7.1; the vocoder build only, FM-1 byte-identical):
+ * fm6_render (eng_fm6.c) and the operator loops in .ram_hot, out of the flash and the cache both cores share (FM6's time
+ * goes in waiting on memory, vocoder-ui-spec §7g). What the render calls and the flash calls too (the envelopes' steps,
+ * the note's lookups, the core) is inlined into each caller (FM6_AI), so the RAM code calls only itself */
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+#define FM6_HOT __attribute__((section(".ram_hot"), used, noinline))
+#define FM6_AI inline __attribute__((always_inline))
+#define FM6_AIH inline __attribute__((always_inline))   /* (the maths helpers, inline already: forced, as the loops in RAM
+                                                     * may call nothing in the flash) */
+#define FM6_AIS inline __attribute__((always_inline))   /* (small plain helpers the render reaches: forced) */
+#else
+#define FM6_HOT
+#define FM6_AI
+#define FM6_AIH inline
+#define FM6_AIS
+#endif
+static FM6_AIH uint32_t fm6_mant(int32_t x)
 {
     uint32_t f = (uint32_t)x & 0xFFFFFFu, k = f >> 14, a = FM6_EXP2[k];
     return (1u << 30) + a + (uint32_t)(((uint64_t)(FM6_EXP2[k + 1u] - a) * (f & 0x3FFFu)) >> 14);
 }
-static inline int32_t fm6_exp2(int32_t x)
+static FM6_AIH int32_t fm6_exp2(int32_t x)
 {
     int32_t i = x >> 24;
     uint32_t m = fm6_mant(x);
     return i < -24 ? 0 : (int32_t)(m >> (i > 5 ? 1 : 6 - i));      /* (msfa: up to 2^6; here 2^5 at most) */
 }
 /* phase increment (Q24 cycles per sample) of log2 frequency x (Q24) (msfa Freqlut::lookup) */
-static inline int32_t fm6_freq(int32_t x)
+static FM6_AIH int32_t fm6_freq(int32_t x)
 {
     int32_t i = x >> 24;
     uint32_t q = (uint32_t)(((uint64_t)fm6_mant(x) * FM6_FREQ_R) >> 25);    /* 2^(i + 21) Hz units */
@@ -67,7 +83,7 @@ static inline int32_t fm6_freq(int32_t x)
     return (int32_t)(q >> (21 - (i > 21 ? 21 : i)));
 }
 /* sine of a Q24 phase (one cycle = 2^24), Q15, linear between SINE's 1024 points (its 1025th = the 1st) */
-static inline int32_t fm6_sin(int32_t ph)
+static FM6_AIH int32_t fm6_sin(int32_t ph)
 {
     const int16_t *s = &SINE_T[((uint32_t)ph >> 14) & 1023u];   /* (SINE_T: dsp.c, RAM in the vocoder build) */
     return s[0] + (((s[1] - s[0]) * (int32_t)(ph & 0x3FFF)) >> 14);
@@ -81,7 +97,7 @@ typedef struct {                 /* msfa Env: level in Q24 log2 (2^24 = 6 dB), 1
 } fm6_env_t;
 
 static const uint8_t FM6_LEVELLUT[20] = {0, 5, 9, 13, 17, 20, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 42, 43, 45, 46};
-static int32_t fm6_scaleout(int32_t ol) { return ol >= 20 ? 28 + ol : FM6_LEVELLUT[ol < 0 ? 0 : ol]; }
+static FM6_AIS int32_t fm6_scaleout(int32_t ol) { return ol >= 20 ? 28 + ol : FM6_LEVELLUT[ol < 0 ? 0 : ol]; }
 
 /* samples at 44.1 kHz a stage holds when its level does not move (msfa ACCURATE_ENVELOPE) */
 static const int32_t FM6_STATICS[77] = {
@@ -92,17 +108,6 @@ static const int32_t FM6_STATICS[77] = {
     1984, 1896, 1808, 1411, 1367, 1234, 1146, 926, 837, 837, 705, 573, 573, 529, 441, 441};
 
 /* stage ix (0..3; 4 = done) of an envelope whose rates and levels are op[FP_R1..], op[FP_L1..] */
-/* FM6's render in RAM (smk37-devtools harmoniser-spec.md §13w, 1.7.1; the vocoder build only, FM-1 byte-identical):
- * fm6_render (eng_fm6.c) and the operator loops in .ram_hot, out of the flash and the cache both cores share (FM6's time
- * goes in waiting on memory, vocoder-ui-spec §7g). What the render calls and the flash calls too (the envelopes' steps,
- * the note's lookups, the core) is inlined into each caller (FM6_AI), so the RAM code calls only itself */
-#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
-#define FM6_HOT __attribute__((section(".ram_hot"), used, noinline))
-#define FM6_AI inline __attribute__((always_inline))
-#else
-#define FM6_HOT
-#define FM6_AI
-#endif
 static FM6_AI void fm6_env_advance(fm6_env_t *e, const uint8_t *op, uint32_t ix)
 {
     int32_t lv, actual, qrate;
@@ -317,7 +322,7 @@ static const uint8_t FM6_ALG[32][6] = {      /* per operator (the sixth first): 
 
 /* bit k: operator k (the sixth first) is a carrier of algorithm a (0..31): it writes the output bus (msfa's
  * isCarrier also counts the modulators that add into bus 1 or 2) */
-static uint32_t fm6_carriers(uint32_t a)
+static FM6_AIS uint32_t fm6_carriers(uint32_t a)
 {
     uint32_t k, c = 0;
     for (k = 0; k < 6u; k++)
