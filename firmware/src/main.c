@@ -283,9 +283,10 @@ static void smk_faders(void)
                 break;
             }
 #endif
-            {   /* a dead zone in the middle (+-3): a fader resting there is the filter off, not a step of it running */
+            {   /* a dead zone in the middle (+-6, harmoniser-spec.md §13t; was +-3): a fader resting there is the filter
+                 * off, not a step of it running */
                 int32_t f = (int32_t)v - 64;
-                trk[i].p[P_TFLT] = (int16_t)(f >= -3 && f <= 3 ? 0 : f);
+                trk[i].p[P_TFLT] = (int16_t)(f >= -6 && f <= 6 ? 0 : f);
             }
             break;
         case 2:

@@ -59,6 +59,13 @@ enum { TS_TRK, TS_HARM };
 static const uint16_t SCALE_MASK[] = {0xFFF, (1 << 0) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 11)};
 #define HM_POOL                                    /* (the firmware's .pool: plain statics here) */
 #include "../firmware/src/smk_harm.h"
+static void hm_pad_note(uint32_t note, uint32_t on)   /* (seq.c's: here the voice alone) */
+{
+    if (on)
+        hm_note_on(note, HM_SP);
+    else
+        hm_note_off(note, HM_SP);
+}
 static uint32_t scale_mask(const track_t *t) { return SCALE_MASK[t->p[P_SCALE] ? 1 : 0]; }
 static int16_t pool[16384];
 
@@ -71,6 +78,7 @@ static void check(const char *what, int ok)
 static void reset(void)
 {
     memset(&hm, 0, sizeof hm);
+    memset(&hv, 0, sizeof hv);                       /* (§13n: who holds the voices, the notes waiting) */
     hm_ring = pool;
     hm_spread = 0;
     memset(&trk[0], 0, sizeof trk[0]);
@@ -161,7 +169,7 @@ int main(void)
         double f;
         reset();
         sine(FT, 8000.0, 2 * N1);
-        hm_note_on(P[k].note);
+        hm_note_on(P[k].note, HM_SK);
         run(in1, out1, 2 * N1);
         f = peak_freq(2 * N1, 40.0, 900.0);
         snprintf(b, sizeof b, "pitch %s: %.1f Hz (want %.1f)", P[k].name, f, FT * P[k].ratio);
@@ -174,7 +182,7 @@ int main(void)
             reset();
             hm_pitch = F[k].v;
             sine(FT, 8000.0, 2 * N1);
-            hm_note_on(60);
+            hm_note_on(60, HM_SK);
             run(in1, out1, 2 * N1);
             f = peak_freq(2 * N1, 40.0, 900.0);
             snprintf(b, sizeof b, "PITCH fader %d: %.1f Hz (want %.1f)", F[k].v, f, FT * F[k].r);
@@ -195,9 +203,9 @@ int main(void)
         reset();
         sine(110.0, 12000.0, 2 * N1);
         run(in1, out1, N1 / 2);
-        hm_note_on(67);
+        hm_note_on(67, HM_SK);
         run(in1 + N1 / 2, out1 + N1 / 2, N1 / 2);
-        hm_note_off(67);
+        hm_note_off(67, HM_SK);
         run(in1 + N1, out1 + N1, N1 / 2);
         for (i = 1; i < 3 * N1 / 2; i++) {
             int32_t d = abs(out1[i] - out1[i - 1]);
@@ -214,7 +222,7 @@ int main(void)
         static int16_t x[61 * 44100];
         reset();
         hm_fb = 127;
-        hm_note_on(60), hm_note_on(67), hm_note_on(72);
+        hm_note_on(60, HM_SK), hm_note_on(67, HM_SK), hm_note_on(72, HM_SK);
         for (i = 0; i < len; i++) {
             s = s * 1664525u + 1013904223u;
             x[i] = i < N1 / 2 ? (int16_t)((int32_t)(s >> 16) - 32768) / 2 : 0;
@@ -236,7 +244,7 @@ int main(void)
         double e0 = 0, e1 = 0, e2 = 0;
         reset();
         sine(440.0, 8000.0, N1);
-        hm_note_on(60);
+        hm_note_on(60, HM_SK);
         run(in1, out1, N1);
         hm.rep = 1;
         memset(in1, 0, sizeof in1[0] * 6 * N1);
@@ -283,20 +291,20 @@ int main(void)
         reset();
         trk[0].p[P_SCALE] = 1, trk[0].p[P_ROOT] = 0, hm_int = 1;
         hm.tnote = 62;                                 /* (a sung D4) */
-        hm_note_on(64);
+        hm_note_on(64, HM_SK);
         hm_ratios(&trk[0]);
         want = hm_dinc(3 * 16);
         snprintf(b, sizeof b, "scale: C MAJOR, sung D4, key E4 -> F4 (+3)");
         check(b, hm.dinc[0] == want);
-        hm_note_off(64), hm_note_on(71);
+        hm_note_off(64, HM_SK), hm_note_on(71, HM_SK);
         hm_ratios(&trk[0]);
         check("scale: key B4 (+11) -> C5 (+10 over D)", hm.dinc[0] == hm_dinc(10 * 16) || hm.dinc[1] == hm_dinc(10 * 16));
         trk[0].p[P_SCALE] = 0;
-        hm_all_off(), hm_note_on(64);
+        hm_all_off(), hm_note_on(64, HM_SK);
         hm_ratios(&trk[0]);
         check("scale: a CHR scale: from the sung note, chromatic, E4 -> +4", hm.dinc[0] == hm_dinc(4 * 16));
         trk[0].p[P_SCALE] = 1, hm_int = 0;
-        hm_all_off(), hm_note_on(64);
+        hm_all_off(), hm_note_on(64, HM_SK);
         hm_ratios(&trk[0]);
         check("scale: INTERVALS FIXED (the default): the song's scale ignored, E4 -> +4", hm.dinc[0] == hm_dinc(4 * 16));
     }
@@ -311,7 +319,7 @@ int main(void)
         reset();
         hs.mic[0] = 50;
         sine(FT, 8000.0, 2 * N1);
-        hm_note_on(64);
+        hm_note_on(64, HM_SK);
         run(in1, out1, 2 * N1);
         f = peak_freq(2 * N1, 40.0, 900.0);
         snprintf(b, sizeof b, "MICRO +50 on E4: %.1f Hz (want %.1f)", f, FT * 1.2599 * pow(2.0, 50.0 / 1200.0));
@@ -324,7 +332,7 @@ int main(void)
         hs.fn[0] = HF_SHARP, hs.mic[0] = 100;
         hm_ratios(&trk[0]);
         on = !hm.on[0];                                 /* (no key: silent) */
-        hm_note_on(60);
+        hm_note_on(60, HM_SK);
         hm_ratios(&trk[0]);
         on &= hm.on[0] && !hm.on[1];
         r1 = hm_ratio1000(0);
@@ -336,7 +344,7 @@ int main(void)
         r3 = hm_ratio1000(0);
         snprintf(b, sizeof b, "SHARP / FLAT: no key silent; C4: MICRO 100 %u / %u, MICRO 12 %u", r1, r2, r3);
         check(b, on && r1 >= 1068 && r1 <= 1072 && r2 >= 928 && r2 <= 932 && r3 >= 1001 && r3 <= 1002);
-        hm_all_off(), hm_note_on(67), hs.mic[0] = 100;
+        hm_all_off(), hm_note_on(67, HM_SK), hs.mic[0] = 100;
         hm_ratios(&trk[0]);
         snprintf(b, sizeof b, "SHARP on G4 (the fifth, 1.498): MICRO 100 %u (1.498 x 1.07 = 1.603)", hm_ratio1000(0));
         check(b, hm_ratio1000(0) >= 1600u && hm_ratio1000(0) <= 1606u);
@@ -346,13 +354,13 @@ int main(void)
         int same = 1;
         reset();
         sine(FT, 8000.0, N1);
-        hm_note_on(67);
+        hm_note_on(67, HM_SK);
         run(in1, out1, N1);
         for (i = N1 / 2; i < N1; i++)
             e1 += pow(out1[i] / (double)VOICE_FS * 16384.0 - in1[i] / 2.0, 2);
         reset();
         hs.lv[0] = 50;
-        hm_note_on(67);
+        hm_note_on(67, HM_SK);
         run(in1, out1, N1);
         for (i = N1 / 2; i < N1; i++)
             e2 += pow(out1[i] / (double)VOICE_FS * 16384.0 - in1[i] / 2.0, 2);
@@ -360,7 +368,7 @@ int main(void)
         check(b, fabs(10 * log10(e2 / e1) + 6.02) < 0.2);
         reset();
         hs.mute = 2;                                   /* (V1 off) */
-        hm_note_on(67);
+        hm_note_on(67, HM_SK);
         run(in1, out1, N1);
         for (i = 0; i < N1; i++)
             same &= out1[i] == VOC_VS(in1[i] >> 1) || out1[i] == VOC_VS((in1[i] + 1) >> 1) || out1[i] == VOC_VS(in1[i] / 2);
@@ -378,19 +386,19 @@ int main(void)
         check("DRY LEVEL 0, no note: silence, exactly", z);
         reset();
         hs.byp = 1;
-        hm_note_on(67);
+        hm_note_on(67, HM_SK);
         run(in1, out1, N1);
         for (i = 0; i < N1; i++)
             by &= out1[i] == VOC_VS(in1[i]);
         check("IN / OUT: OUT, a note held: the input straight through, exactly", by);
         reset();
         sine(330.0, 3000.0, N1);                        /* (quiet: the memory's soft limit out of it) */
-        hm_wd = 127, hm_note_on(67);                    /* (all wet: the voice alone) */
+        hm_wd = 127, hm_note_on(67, HM_SK);                    /* (all wet: the voice alone) */
         run(in1, out1, N1);
         for (i = N1 / 2; i < N1; i++)
             e1 += (double)out1[i] * out1[i];
         reset();
-        hm_wd = 127, hm_note_on(67);
+        hm_wd = 127, hm_note_on(67, HM_SK);
         hs.inl = HM_INL_0 - 6;
         run(in1, out1, N1);
         for (i = N1 / 2; i < N1; i++)
@@ -410,14 +418,14 @@ int main(void)
         check(b, fabs(f / (FT * 2.0) - 1.0) < 0.01);
         reset();
         hs.ctl = HC_MAN;
-        hm_note_on(64), hm_note_on(67), hm_note_on(72);
-        ok = hm.note[0] == 0 && hm.note[1] && hm.note[2] && (hm.note[1] == 72 || hm.note[2] == 72);
-        check("MANUAL alone: the keys take V2 and V3 only (V1 the fader's)", ok);
+        hm_note_on(64, HM_SK), hm_note_on(67, HM_SK), hm_note_on(72, HM_SK);
+        ok = hm.note[0] == 0 && hm.note[1] == 64 && hm.note[2] == 67 && hv.wc == 1 && hv.wn[0] == 72;
+        check("MANUAL alone: the keys take V2 and V3 only (V1 the fader's; a third key waits, §13n E)", ok);
         reset();
         hs.ctl = 3u, hm_pitch = -32;                    /* (-12 semitones) */
         hm_ratios(&trk[0]);
         ok = hm.on[0] && hm_ratio1000(0) == 500u;
-        hm_note_on(64);
+        hm_note_on(64, HM_SK);
         hm_ratios(&trk[0]);
         snprintf(b, sizeof b, "K+M: no key, V1 at PITCH (0.500); E4 held, an octave down: %u (0.630)", hm_ratio1000(0));
         check(b, ok && hm_ratio1000(0) >= 629u && hm_ratio1000(0) <= 631u);
@@ -432,7 +440,7 @@ int main(void)
         ok = hm.note[0] == 67;
         hm_pad = 0;
         hm_block();
-        check("pads: top 5 on = G4 (a 5th up), off = let go", ok && hm.note[0] == 0);
+        check("pads: top 5 on = G4 (a 5th up), off = let go (no lane sounding it: closed at once)", ok && hm.note[0] == 0);
     }
     {   /* the EQ's curves */
         static const struct { int lo; uint32_t step; double f, want; } E[] = {
@@ -471,7 +479,7 @@ int main(void)
                 hs.high = HM_HIGH_N - 1u;
             else
                 hs.fbl = 1;
-            hm_note_on(60), hm_note_on(67), hm_note_on(72);
+            hm_note_on(60, HM_SK), hm_note_on(67, HM_SK), hm_note_on(72, HM_SK);
             run(x, o, len);
             for (i = 0; i < N1; i++) {
                 e0 += (double)o[i] * o[i];
@@ -502,11 +510,11 @@ int main(void)
         }
         reset();
         hm_fb = 40, hm_wd = 127, hm_send[1] = 100;
-        hm_note_on(64), hm_note_on(67);
+        hm_note_on(64, HM_SK), hm_note_on(67, HM_SK);
         run_lane(HL_T2, xs, ws, N1);                    /* (the sum through one lane) */
         reset();
         hm_fb = 40, hm_wd = 127, hm_send[1] = 100;
-        hm_note_on(64), hm_note_on(67);
+        hm_note_on(64, HM_SK), hm_note_on(67, HM_SK);
         for (i = 0; i < N1; i += VOC_MAXN) {            /* (each through its own, the same block) */
             static int32_t l1[VOC_MAXN], r1[VOC_MAXN], l2[VOC_MAXN], r2[VOC_MAXN];
             hm_block();
@@ -528,7 +536,7 @@ int main(void)
         int same = 1;
         reset();
         hm_wd = 127;
-        hm_note_on(60);
+        hm_note_on(60, HM_SK);
         for (i = 0; i < N1; i += VOC_MAXN) {
             for (k = 0; k < VOC_MAXN; k++)
                 x[k] = (int32_t)(8000 * sin(2 * M_PI * 240.1 * (i + k) / 44100.0));
@@ -540,7 +548,7 @@ int main(void)
         check("pans: centred (the default): left = right, exactly", same);
         reset();
         hm_wd = 127, hm_spread = 100;
-        hm_note_on(60);                                 /* (V1) */
+        hm_note_on(60, HM_SK);                                 /* (V1) */
         for (i = 0; i < N1; i += VOC_MAXN) {
             for (k = 0; k < VOC_MAXN; k++)
                 x[k] = (int32_t)(8000 * sin(2 * M_PI * 240.1 * (i + k) / 44100.0));
@@ -570,7 +578,7 @@ int main(void)
         double e0 = 0, e01 = 0;
         reset();
         hm_wd = 127, hm_send[3] = 100;
-        hm_note_on(60), hm_note_on(67), hm_note_on(72);
+        hm_note_on(60, HM_SK), hm_note_on(67, HM_SK), hm_note_on(72, HM_SK);
         for (i = 0; i < N1; i += VOC_MAXN) {
             for (k = 0; k < VOC_MAXN; k++)
                 x[k] = (int32_t)(3000 * sin(2 * M_PI * 240.1 * (i + k) / 44100.0));
@@ -592,7 +600,7 @@ int main(void)
         uint32_t s2 = 1;
         reset();
         hm_wd = 127, hm_fb = 122, hs.fbl = 1;
-        hm_note_on(60), hm_note_on(64), hm_note_on(67);
+        hm_note_on(60, HM_SK), hm_note_on(64, HM_SK), hm_note_on(67, HM_SK);
         for (i = 0; i < 4 * N1; i += VOC_MAXN) {
             for (k = 0; k < VOC_MAXN; k++)
                 s2 = s2 * 1664525u + 1013904223u, x[k] = (int32_t)(s2 >> 17) - 32768;
@@ -603,6 +611,86 @@ int main(void)
         }
         snprintf(b, sizeof b, "ceiling: three voices, FEEDBACK 122 (H949), full-scale noise in: wet peak %d (<= 32767)", mx);
         check(b, mx <= 32767);
+    }
+    /* §13n (Build 1.5): who keeps a voice. A 441 Hz sine (100 samples a cycle) in runs of 3200 samples: no seam */
+    {
+        static const int PADS[3] = {1, 2, 3};          /* (G1's 2nd, 3rd, 4th: notes 62, 64, 65) */
+        int ok, j, t;
+        int32_t mx;
+        reset();
+        sine(441.0, 8000.0, 3200);
+        for (j = 0; j < 3; j++)
+            hm_pad |= (uint16_t)(1u << PADS[j]);
+        run(in1, out1, 3200);
+        hm_note_on(72, HM_SQ);
+        run(in1, out1, 3200);
+        ok = hv.wc == 1 && hv.wn[0] == 72;
+        for (j = 0; j < 3; j++)
+            ok = ok && (hm.note[0] == 60 + HM_PADIV[PADS[j]] || hm.note[1] == 60 + HM_PADIV[PADS[j]] ||
+                        hm.note[2] == 60 + HM_PADIV[PADS[j]]);
+        check("pads held on all three voices: a sequence note gets none (it waits; the pads keep theirs)", ok);
+        hm_note_off(72, HM_SQ);
+        check("  .. let go while waiting: counted, gone", hv.wc == 0 && hv.drops == 1);
+
+        reset();
+        sine(441.0, 8000.0, 3200);
+        hm_note_on(60, HM_SK), hm_note_on(64, HM_SK), hm_note_on(67, HM_SK);
+        hm_note_on(72, HM_SQ);
+        run(in1, out1, 3200);
+        ok = hv.wc == 1 && hm.note[0] + hm.note[1] + hm.note[2] == 60 + 64 + 67;
+        check("three keys held: the sequence's note waits, no key's voice taken", ok);
+        hm_note_off(64, HM_SK);
+        run(0, out1, 3200);                            /* (the input stops: the released voice's tail dies, it closes) */
+        run(0, out1, 3200);
+        ok = hv.wc == 0 && (hm.note[0] == 72 || hm.note[1] == 72 || hm.note[2] == 72);
+        check("  .. a key let go, its tail over: the waiting note takes that voice", ok);
+
+        reset();
+        sine(441.0, 8000.0, 3200);
+        hm_note_on(60, HM_SQ), hm_note_on(64, HM_SQ), hm_note_on(67, HM_SQ);
+        for (t = 0; t < 4; t++)
+            run(in1, out1, 3200);
+        {   /* (the steady output's largest sample step, three voices: the switch may not step more than it) */
+            int32_t m0 = 0;
+            for (j = 1; j < 3200; j++) {
+                int32_t d = out1[j] - out1[j - 1];
+                d = d < 0 ? -d : d;
+                m0 = d > m0 ? d : m0;
+            }
+            hm_note_on(72, HM_SK);
+            ok = hv.steals == 1 && hm.note[0] == 60 && hv.sw[0];
+            run(in1, out1, 3200);
+            mx = 0;
+            for (j = 1; j < 3200; j++) {
+                int32_t d = out1[j] - out1[j - 1];
+                d = d < 0 ? -d : d;
+                mx = d > mx ? d : mx;
+            }
+            ok = ok && hm.note[0] == 72 && hv.hold[0] == HM_SK;
+            snprintf(b, sizeof b, "a key takes the oldest sequence voice, faded (largest step %d, steady %d)", (int)mx,
+                     (int)m0);
+            check(b, ok && mx <= m0 + m0 / 8);
+        }
+
+        reset();
+        sine(441.0, 8000.0, 3200);
+        hm_note_on(67, HM_SK);
+        for (t = 0; t < 4; t++)
+            run(in1, out1, 3200);
+        hm_note_off(67, HM_SK);
+        for (t = 0; t < 6; t++)
+            run(in1, out1, 3200);                      /* (0.44 s, the input still sounding) */
+        ok = hm.note[0] == 67 && !hv.hold[0];
+        check("released while its input sounds: the voice stays open (its tail, §13n B)", ok);
+        run(0, out1, 3200);
+        check("  .. the input over: closed once its output is quiet", hm.note[0] == 0);
+        hm_note_on(67, HM_SK);
+        run(in1, out1, 3200);
+        hm_note_off(67, HM_SK);
+        for (t = 0; t < 30 && hm.note[0]; t++)
+            run(in1, out1, 3200);
+        snprintf(b, sizeof b, "  .. a drone never quiet: closed at the 2 s cap (%.2f s)", t * 3200 / 44100.0);
+        check(b, !hm.note[0] && t * 3200 >= (int)(HM_RCAP * 32u) - 3200 && t * 3200 <= (int)(HM_RCAP * 32u) + 3200);
     }
     printf(fails ? "smk_harm_test: %d FAILED\n" : "smk_harm_test: all passed\n", fails);
     return fails != 0;

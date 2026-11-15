@@ -1745,7 +1745,15 @@ static int arp_step(track_t *t)
  * each note it plays is recorded (what you hear) */
 static void arp_tick(track_t *t, uint32_t adv)
 {
-    uint32_t div = (uint32_t)t->p[P_ARATE] % NDIV_SHORT, u = div_units(div), into, slen, abs = 0, fire = 0;
+    uint32_t div, u, into, slen, abs = 0, fire = 0;
+#if BOARD_SMK37
+    if (!t->arp_note && (!t->p[P_AMODE] || !t->nheld)) {   /* (harmoniser-spec.md §13t: off, or no key, nothing sounding:
+                                                    * the return below, before the rate's divisions) */
+        t->arp_new = 0;
+        return;
+    }
+#endif
+    div = (uint32_t)t->p[P_ARATE] % NDIV_SHORT, u = div_units(div);
     if (t->arp_note) {
         if (t->arp_off <= adv) {
             arp_end(t);
@@ -3981,6 +3989,10 @@ static void events_block(uint32_t n)
         mi_pen[0] = mi_pen[1] = mi_pen[2] = mi_pen[3] = 0;
     }
     TIM_LAP(TS_EVM, te);
+#ifdef SMK_HARM
+    hm_src = HM_SQ;                                   /* (HARMONY: T1's notes from here on are the sequence's, the arps',
+                                                       * ROLL's: a voice they hold may be taken, harmoniser-spec.md §13n) */
+#endif
     for (i = 0; i < NTRK; i++) {
         seq_tick(&trk[i], adv);
         TIM_LAP(TS_ES1 + i, te);
@@ -3990,6 +4002,9 @@ static void events_block(uint32_t n)
     TIM_LAP(TS_EVR, te);
     for (i = 0; i < NPART; i++)
         arp_tick(&trk[i], adv);
+#ifdef SMK_HARM
+    hm_src = 0;
+#endif
     TIM_LAP(TS_EVA, te);
     if (song.playing) {
         song.tick++;
@@ -4004,3 +4019,23 @@ static void events_block(uint32_t n)
     }
     TIM_LAP(TS_EVC, te);
 }
+
+#ifdef SMK_HARM
+/* an interval pad (smk_harm.h hm_block, HARMONY's G1): T1's note as its keys play one (harmoniser-spec.md §13m): the
+ * harmoniser's voice, held as a pad's (§13n: never taken by the keys or the sequence), MIDI out on T1's channel as a
+ * key's, recorded while T1 records */
+static void hm_pad_note(uint32_t note, uint32_t on)
+{
+    track_t *t = &trk[0];
+    uint32_t mc = trk_midi_ch(0);
+    hm_src = HM_SP;
+    if (on) {
+        input_on(t, note, 100u);
+        midi_out_note(mc, note, 100u);
+    } else {
+        input_off(t, note);
+        midi_out_note(mc, note, 0);
+    }
+    hm_src = 0;
+}
+#endif

@@ -156,6 +156,9 @@ typedef struct {
     uint16_t quiet;                  /* blocks its input, voices and feedback have all been silent (§13f) */
     int32_t lg;                      /* its input limiter's gain, Q15 (0: not started; harmoniser-spec.md §13q) */
     int32_t pvl, pvr;                /* its last output sample's sums (L, R; LANE RATE 22K's in-between sample, §13s) */
+    uint32_t blk;                    /* hm_block's count when it last ran (§13n: a lane not run lately holds no voice) */
+    uint16_t vg[3];                  /* each voice: the assignment its release state is for (hv.gen) */
+    uint8_t vq[3], vc[3];            /* .. released: blocks of its output under HM_QTHR; closed here (B) */
 } hm_lane_t;
 /* a lane's input limiter (§13q): a hot source (T2's pre-fader FM6) is turned down to HM_LIM instead of hard-clipped at
  * full scale; a block's peak is known before it plays, so the gain drops at once for the block (no clip) and comes back
@@ -174,6 +177,8 @@ static struct {                      /* the block's shared values (hm_block, cor
                                       * dry's gain in a lane's output (Q15: DRY LEVEL x (1 - WET); IN / OUT OUT: 32768) */
     int32_t cq[2][5];                /* the feedback EQ's coefficients */
     uint8_t eql, eqh, byp;
+    uint8_t rl[3];                   /* each voice released, its tail open while each lane's output of it sounds (§13n B) */
+    uint16_t gen[3];                 /* .. its assignment (hv.gen) */
 } hb HM_POOL;
 static uint8_t hm_spread;            /* G3 K5 SPREAD 0 .. 100 (V1 left, V3 right; kept: vocset) */
 static uint8_t hm_vmode, hm_vpark;   /* VOCODER > MODE set aside while HARMONY is on (the vocoder off, MODE AUDIO: §10a-2);
@@ -214,31 +219,129 @@ static uint32_t hm_rep_t0;
 static uint8_t hm_rep_held, hm_rep_pad;              /* (hm_rep_pad: the HARMONY page's REPEAT pad held, ui_hpage.c) */
 static int hm_rep_shown(void) { return hm.rep && (hm_rep_held || hm_rep_pad || ((fm1_ms / 250u) & 1u)); }
 
-/* the notes (voice.c trk_note_on / off / all_off, on T1 while HARMONY is on) */
-static void hm_note_on(uint32_t note)
+/* the notes (voice.c trk_note_on / off / all_off, on T1 while HARMONY is on; the pads, hm_block). Who holds a voice
+ * (harmoniser-spec.md §13n): a key (or MIDI in), the sequence (with the arp and ROLL) or a pad, as bits, so the same
+ * note held by two of them stays until both let go */
+#define HM_SK 1u                     /* a key, MIDI in */
+#define HM_SQ 2u                     /* the sequence, the arp, ROLL (seq.c sets hm_src around them) */
+#define HM_SP 4u                     /* an interval pad */
+#define HM_SWB 3u                    /* a steal's fade out, blocks (HM_FADE: 64 samples, two blocks; one more) */
+#define HM_RQB 8u                    /* a released voice closes in a lane after this many blocks of its output under
+                                      * HM_QTHR (5.8 ms) */
+#define HM_RCAP 2756u                /* .. and everywhere after 2 s at the most (a drone on a send lane: a released
+                                      * interval does not run on) */
+#define HM_WN 4u                     /* notes that can wait for a voice */
+static uint8_t hm_src;               /* the holder of a T1 note now (voice.c trk_note_on / off): 0 = HM_SK; seq.c sets
+                                      * HM_SQ around the sequencer, the arps, ROLL; hm_pad_note HM_SP */
+static struct {
+    uint8_t hold[3];                 /* each voice's holders (0 with a note: released, its tail sounding, §13n B) */
+    uint8_t pn[3], ps[3], sw[3];     /* a voice being taken (§13n D): the next note, its holders, blocks of fade left */
+    uint16_t gen[3];                 /* each voice's assignment count (the lanes' release state follows it) */
+    uint16_t rb[3];                  /* blocks since its release */
+    uint8_t wn[HM_WN], ws[HM_WN], wc;   /* notes waiting for a voice (§13n E), their holders, how many */
+    uint32_t nblk;                   /* hm_block's count (a lane that ran lately: hm_lane_t blk) */
+    volatile uint32_t steals, waits, drops;   /* the console's (harm, cleared): a held voice taken (faded), a note that
+                                      * had to wait, one let go before it got a voice */
+} hv;
+static uint32_t hm_free(uint32_t v) { return !hm.note[v] && !hv.sw[v]; }
+/* the voice a note may take (§13n E): a free one, else the released one longest in its tail, else the oldest held by
+ * the sequence alone; a voice a key or a pad holds is never taken (3: none). res: MANUAL's voice */
+static uint32_t hm_vpick(uint32_t res)
 {
-    uint32_t v, k = 3u, res = (hs.ctl & 3u) == HC_MAN ? hm_mvoice() : 3u;   /* (MANUAL alone: its voice is the fader's) */
+    uint32_t v, k = 3u;
     for (v = 0; v < 3u; v++)
-        if (hm.note[v] == note)
-            return;                                     /* (held already) */
-    for (v = 0; v < 3u && k == 3u; v++)                 /* a free voice */
-        if (!hm.note[v] && v != res)
+        if (v != res && hm_free(v))
+            return v;
+    for (v = 0; v < 3u; v++)
+        if (v != res && hm.note[v] && !hv.hold[v] && !hv.sw[v] && (k == 3u || hv.rb[v] > hv.rb[k]))
             k = v;
-    if (k == 3u)                                        /* else the oldest's */
-        for (v = 0; v < 3u; v++)
-            if (v != res && (k == 3u || hm.age[v] < hm.age[k]))
-                k = v;
-    hm.age[k] = ++hm.seq;
-    hm.note[k] = (uint8_t)(note ? note : 1u);
-}
-static void hm_note_off(uint32_t note)
-{
-    uint32_t v;
+    if (k < 3u)
+        return k;
     for (v = 0; v < 3u; v++)
-        if (hm.note[v] == note)
-            hm.note[v] = 0;
+        if (v != res && !hv.sw[v] && hv.hold[v] == HM_SQ && (k == 3u || hm.age[v] < hm.age[k]))
+            k = v;
+    return k;
 }
-static void hm_all_off(void) { hm.note[0] = hm.note[1] = hm.note[2] = 0; }
+/* voice k to note: free, at once; sounding (held or in its tail), faded out first at its old interval, then the new
+ * one faded in (§13n D) */
+static void hm_take(uint32_t k, uint32_t note, uint32_t src)
+{
+    if (hm.note[k]) {
+        if (hv.hold[k])
+            hv.steals++;
+        hv.pn[k] = (uint8_t)note, hv.ps[k] = (uint8_t)src, hv.sw[k] = HM_SWB;
+        return;
+    }
+    hm.note[k] = (uint8_t)note, hv.hold[k] = (uint8_t)src, hm.age[k] = ++hm.seq;
+    hv.gen[k]++, hv.rb[k] = 0;
+}
+static uint32_t hm_res(void) { return (hs.ctl & 3u) == HC_MAN ? hm_mvoice() : 3u; }   /* (MANUAL alone: its voice is
+                                                       * the fader's) */
+static void hm_note_on(uint32_t note, uint32_t src)
+{
+    uint32_t v, k;
+    note = note ? note & 127u : 1u;
+    src = src ? src : HM_SK;
+    for (v = 0; v < 3u; v++) {
+        if (hv.sw[v] && hv.pn[v] == note) {
+            hv.ps[v] |= (uint8_t)src;                   /* (taking a voice already) */
+            return;
+        }
+        if (hm.note[v] == note && !hv.sw[v]) {
+            hv.hold[v] |= (uint8_t)src;                 /* (held already, or back from its tail) */
+            return;
+        }
+    }
+    for (v = 0; v < hv.wc; v++)
+        if (hv.wn[v] == note) {
+            hv.ws[v] |= (uint8_t)src;
+            return;
+        }
+    k = hm_vpick(hm_res());
+    if (k < 3u) {
+        hm_take(k, note, src);
+    } else if (hv.wc < HM_WN) {                         /* no voice may be taken: it waits while held */
+        hv.wn[hv.wc] = (uint8_t)note, hv.ws[hv.wc] = (uint8_t)src, hv.wc++;
+        hv.waits++;
+    } else {
+        hv.waits++, hv.drops++;
+    }
+}
+static void hm_note_off(uint32_t note, uint32_t src)
+{
+    uint32_t v, j;
+    note = note ? note & 127u : 1u;
+    src = src ? src : HM_SK;
+    for (v = 0; v < 3u; v++) {
+        if (hv.sw[v] && hv.pn[v] == note) {
+            hv.ps[v] &= (uint8_t)~src;
+            if (!hv.ps[v])
+                hv.pn[v] = 0;                           /* (let go before it got the voice: the voice frees) */
+        }
+        if (hm.note[v] == note && !hv.sw[v] && hv.hold[v]) {
+            hv.hold[v] &= (uint8_t)~src;
+            if (!hv.hold[v])
+                hv.rb[v] = 0;                           /* released: its tail (§13n B) */
+        }
+    }
+    for (v = 0; v < hv.wc; v++)
+        if (hv.wn[v] == note) {
+            hv.ws[v] &= (uint8_t)~src;
+            if (!hv.ws[v]) {
+                hv.drops++;
+                for (j = v; j + 1u < hv.wc; j++)
+                    hv.wn[j] = hv.wn[j + 1u], hv.ws[j] = hv.ws[j + 1u];
+                hv.wc--;
+            }
+            break;
+        }
+}
+static void hm_all_off(void)
+{
+    hm.note[0] = hm.note[1] = hm.note[2] = 0;
+    memset(hv.hold, 0, sizeof hv.hold), memset(hv.pn, 0, sizeof hv.pn), memset(hv.sw, 0, sizeof hv.sw);
+    hv.wc = 0;
+}
 
 /* the memory at a delay of d (Q16 storage samples) behind the newest slot, interpolated */
 static inline int32_t hm_read(const int16_t *hm_ring, int32_t wq, int32_t d)   /* (hm_ring: the lane's memory) */
@@ -468,6 +571,7 @@ static inline int32_t hm_knee(int32_t y)
     a = K + (a <= 262143 ? a * M / (a + M) : (int32_t)(((int64_t)a * M) / (a + M)));
     return y < 0 ? -a : a;
 }
+static void hm_pad_note(uint32_t note, uint32_t on);   /* (seq.c: a pad as T1's keys play a note, §13m) */
 /* once a block on core 0, before the units (fx.c): the pads as notes, the voices' ratios and gates, the shared gains */
 static void __attribute__((noinline)) hm_block(void)
 {
@@ -475,24 +579,72 @@ static void __attribute__((noinline)) hm_block(void)
     int32_t fbk, wg, dg;
     if (!hm.run)
         hm_start();
-    {   /* G1's pads: as notes (here, before the units, as the sequencer's) */
-        uint32_t pd = hm_pad, re = hm_padre & pd, ch = (pd ^ hm.padl) | re, k;
+    {   /* G1's pads: as notes (here, before the units, as the sequencer's): T1's notes as its keys' (MIDI out, recorded:
+         * §13m, seq.c hm_pad_note); a latched pad played again while it waits for a voice: asked again, no MIDI */
+        uint32_t pd = hm_pad, mv = pd ^ hm.padl, re = hm_padre & pd & ~mv, k;
         hm_padre = 0;
-        for (k = 0; ch && k < 16u; k++)
-            if ((ch >> k) & 1u) {
-                uint32_t nt = (uint32_t)(60 + HM_PADIV[k]);
-                if ((pd >> k) & 1u)
-                    hm_note_on(nt);
-                else
-                    hm_note_off(nt);
-            }
+        for (k = 0; (mv | re) && k < 16u; k++) {
+            uint32_t nt = (uint32_t)(60 + HM_PADIV[k]);
+            if ((mv >> k) & 1u)
+                hm_pad_note(nt, (pd >> k) & 1u);
+            else if ((re >> k) & 1u)
+                hm_note_on(nt, HM_SP);
+        }
         hm.padl = (uint16_t)pd;
+    }
+    {   /* §13n: the voices' turns this block. A voice being taken: its fade out done, the new note (or free, if that was
+         * let go meanwhile); a released voice: closed once every lane that runs has closed it (its output quiet), or
+         * after HM_RCAP; then the notes waiting take what is free (the pads' first) */
+        uint32_t k, j, pass;
+        hv.nblk++;
+        for (v = 0; v < 3u; v++) {
+            if (hv.sw[v]) {
+                if (--hv.sw[v])
+                    continue;
+                hm.note[v] = 0;
+                if (hv.pn[v]) {
+                    hm.note[v] = hv.pn[v], hv.hold[v] = hv.ps[v], hm.age[v] = ++hm.seq;
+                    hv.gen[v]++, hv.rb[v] = 0;
+                }
+                hv.pn[v] = hv.ps[v] = 0;
+                continue;
+            }
+            if (hm.note[v] && !hv.hold[v]) {
+                uint32_t open = 0;
+                if (hv.rb[v] < 0xFFFFu)
+                    hv.rb[v]++;
+                for (k = 0; k < HL_N; k++) {
+                    const hm_lane_t *L = &hm_ln[k];
+                    if (L->run && L->blk && hv.nblk - L->blk <= 2u && L->quiet < HM_QBLK && (L->vg[v] != hv.gen[v] || !L->vc[v]))
+                        open = 1;
+                }
+                if (!open || hv.rb[v] >= HM_RCAP)
+                    hm.note[v] = 0;
+            }
+        }
+        for (pass = 0; pass < 2u && hv.wc; pass++)     /* (pass 0: the pads' notes; 1: the rest) */
+            for (j = 0; j < hv.wc;) {
+                if (!pass && !(hv.ws[j] & HM_SP)) {
+                    j++;
+                    continue;
+                }
+                k = hm_vpick(hm_res());
+                if (k == 3u)
+                    break;
+                hm_take(k, hv.wn[j], hv.ws[j]);
+                for (v = j; v + 1u < hv.wc; v++)
+                    hv.wn[v] = hv.wn[v + 1u], hv.ws[v] = hv.ws[v + 1u];
+                hv.wc--;
+            }
     }
     hm_ratios(&trk[0]);
     for (v = 0; v < 3u; v++) {
         int32_t p = hs.pan[v] + (v == 0u ? -(int32_t)hm_spread * 64 / 100 : v == 2u ? (int32_t)hm_spread * 63 / 100 : 0);
         p = clamp(p, -64, 63);                          /* (SPREAD: V1 left, V3 right, V2 as it is) */
-        hb.gt[v] = hm.on[v] ? 32767 : 0;
+        hb.gt[v] = hm.on[v] && !hv.sw[v] ? 32767 : 0;   /* (§13n D: a voice being taken fades out) */
+        hb.rl[v] = (uint8_t)(hm.note[v] && !hv.hold[v] && !hv.sw[v] && hm.on[v]);   /* (B: released, each lane its own
+                                                         * close) */
+        hb.gen[v] = hv.gen[v];
         nn += hm.on[v] != 0;
         hb.lg[v] = (hs.mute >> (v + 1u)) & 1u ? 0 : (int32_t)(hs.lv[v] > 100u ? 100u : hs.lv[v]) * 32768 / 100;
         hb.pl[v] = 4096 - (p > 0 ? p * 64 : 0), hb.pr[v] = 4096 + (p < 0 ? p * 64 : 0);   /* (the tracks' PAN law) */
@@ -534,6 +686,10 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
     TIM_VOC_T(tl);                                      /* (§12: each lane's time, console "timing" ln_*) */
     if (!L->run)
         hm_lane_start(k);
+    L->blk = hv.nblk;
+    for (v = 0; v < 3u; v++)                            /* (§13n B: a new assignment, or held again: open) */
+        if (L->vg[v] != hb.gen[v] || !hb.rl[v])
+            L->vg[v] = hb.gen[v], L->vq[v] = 0, L->vc[v] = 0;
     if (L->quiet >= HM_QBLK && !rep) {                  /* (§13f: asleep; a block of input above the floor wakes it) */
         uint32_t m = n > VOC_MAXN ? VOC_MAXN : n, a = 0;
         for (i = 0; i < m; i++) {
@@ -548,6 +704,8 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
                     for (i = 0; i < m; i++)
                         wv[v][i] = 0;
             L->rwg = wg, L->rfb = fbk, L->rig = ig;     /* (the ramps start where the controls are when it wakes) */
+            for (v = 0; v < 3u; v++)
+                L->vc[v] = hb.rl[v];                    /* (silent: a released voice closed here) */
             TIM_ADD(TS_LV + k % HL_N, TIM_NOW() - tl);
             return 0u;
         }
@@ -620,7 +778,9 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
         uint32_t w = L->w, t = L->t;
         int32_t half = L->half, fb = L->fb, eql = hb.eql, eqh = hb.eqh;
         int32_t gA = L->g[0], gB = L->g[1], gC = L->g[2], pA = L->ph[0], pB = L->ph[1], pC = L->ph[2];
-        const int32_t gtA = hb.gt[0], gtB = hb.gt[1], gtC = hb.gt[2], dA = hm.dinc[0], dB = hm.dinc[1], dC = hm.dinc[2];
+        const int32_t gtA = L->vc[0] ? 0 : hb.gt[0], gtB = L->vc[1] ? 0 : hb.gt[1], gtC = L->vc[2] ? 0 : hb.gt[2];   /* (§13n
+                                                         * B: a released voice closed in this lane fades out here) */
+        const int32_t dA = hm.dinc[0], dB = hm.dinc[1], dC = hm.dinc[2];
         const int32_t lA = hb.lg[0], lB = hb.lg[1], lC = hb.lg[2], plA = hb.pl[0], plB = hb.pl[1], plC = hb.pl[2];
         const int32_t prA = hb.pr[0], prB = hb.pr[1], prC = hb.pr[2];
         int32_t lsl = L->pvl, lsr = L->pvr;
@@ -804,6 +964,13 @@ static uint32_t __attribute__((noinline)) hm_lane(uint32_t k, const int32_t *in,
     }
  {
         int32_t af = L->fb < 0 ? -L->fb : L->fb;        /* (§13f: this block silent throughout? a count toward sleep) */
+        for (v = 0; v < 3u; v++)                        /* (§13n B: a released voice's own output here, quiet for
+                                                         * HM_RQB blocks: closed in this lane) */
+            if (hb.rl[v] && !L->vc[v]) {
+                L->vq[v] = (uint8_t)(ui_v[v] <= HM_QTHR ? L->vq[v] + 1u : 0u);
+                if (L->vq[v] >= HM_RQB)
+                    L->vc[v] = 1;
+            }
         if (!rep && ui_in <= HM_QTHR && ui_out <= HM_QTHR && af <= HM_QTHR && ui_v[0] <= HM_QTHR && ui_v[1] <= HM_QTHR &&
             ui_v[2] <= HM_QTHR)
             L->quiet = (uint16_t)(L->quiet < 0xFFFFu ? L->quiet + 1u : L->quiet);

@@ -269,6 +269,16 @@ static void voice_kill(voice_t *v)                      /* fade out over the nex
  * the oldest held one that is not a part's lowest POLY note nor its MONO / LEGATO / UNISON lead, as the
  * voice budget keeps them: a dense chord on a heavy engine thins out from the top, bass and lead stay. */
 static uint32_t shed_count;
+#if BOARD_SMK37
+static uint32_t shed_trk[NTRK];                         /* (harmoniser-spec.md §13t: each part's, console status) */
+static void shed_of(const voice_t *v)
+{
+    uint32_t p;
+    for (p = 0; p < VOC_NPOOL; p++)
+        if (v >= trk[p].v && v < trk[p].v + NVOICE)
+            shed_trk[p]++;
+}
+#endif
 
 static void shed_voice(void)
 {
@@ -283,6 +293,9 @@ static void shed_voice(void)
     if (best) {
         voice_kill(best);
         shed_count++;
+#if BOARD_SMK37
+        shed_of(best);
+#endif
         return;
     }
     for (p = 0; p < VOC_NPOOL; p++) {
@@ -298,6 +311,9 @@ static void shed_voice(void)
     if (best) {
         voice_kill(best);
         shed_count++;
+#if BOARD_SMK37
+        shed_of(best);
+#endif
     }
 }
 
@@ -612,7 +628,7 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
     vis_note[(uint32_t)(t - trk) & 3u] = (uint8_t)note;
 #ifdef SMK_HARM
     if (HM_T(t)) {                                      /* HARMONY: T1's notes are the voices' intervals (smk_harm.h) */
-        hm_note_on(note);
+        hm_note_on(note, hm_src);                       /* (its holder: a key, the sequence, a pad: §13n) */
         return;
     }
 #endif
@@ -684,7 +700,7 @@ static void trk_note_off(track_t *t, uint32_t note)
         return;                                         /* one-shots */
 #ifdef SMK_HARM
     if (t == &trk[0])
-        hm_note_off(note);                              /* (HARMONY: the voice's interval let go; off: none held) */
+        hm_note_off(note, hm_src);                      /* (HARMONY: the voice's interval let go; off: none held) */
 #endif
     strum_cancel(t, note, 0);
     for (i = 0; i < t->xp_n; i++)                       /* not sounding yet (engine switch): forget it */

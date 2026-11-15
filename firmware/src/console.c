@@ -200,6 +200,11 @@ static void con_status(void)
     con_kx("sp", stack_sp());                           /* where the main loop runs now: which of the two regions */
     con_kv("audio_max_us", (int32_t)felucca_dbg.max_us);
     con_kv("voices_shed", (int32_t)shed_count);
+#if BOARD_SMK37
+    con_kv("shed_t1", (int32_t)shed_trk[0]);            /* (each part's, harmoniser-spec.md §13t) */
+    con_kv("shed_t2", (int32_t)shed_trk[1]);
+    con_kv("shed_t3", (int32_t)shed_trk[2]);
+#endif
     con_kv("voices_given_up", (int32_t)voice_kills);
     con_kv("track", (int32_t)song.sel + 1);
     con_kv("batt_raw", song.batt_raw);
@@ -567,6 +572,23 @@ static void hp_console(const char *p)
         con_puts(" voice-in ");
         con_dec(hm_send[0]);
         con_puts(hm_r22 ? " rate 22K" : " rate 44.1");   /* (LANE RATE, bank E column 4: §13s) */
+        con_putc(13);
+        con_putc(10);
+        con_puts("  voices (§13n, cleared): steals ");      /* (a held voice taken, faded; notes that waited; let go
+                                                         * waiting; now: released voices open, notes waiting) */
+        con_dec((int32_t)hv.steals);
+        con_puts(" waits ");
+        con_dec((int32_t)hv.waits);
+        con_puts(" drops ");
+        con_dec((int32_t)hv.drops);
+        con_puts(" | now hold/rel ");
+        for (v = 0; v < 3u; v++) {
+            con_dec(hv.hold[v]);
+            con_puts(hm.note[v] && !hv.hold[v] ? "r " : " ");
+        }
+        con_puts("waiting ");
+        con_dec(hv.wc);
+        hv.steals = hv.waits = hv.drops = 0;
         con_putc(13);
         con_putc(10);
         con_puts("  lanes in/out/write (int16 peaks), bank F:");   /* (§12: VOICE, T2, T3, DRUMS; cleared) */
