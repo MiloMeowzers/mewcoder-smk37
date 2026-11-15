@@ -211,6 +211,7 @@ jobs:
           for m in pro elite mke; do cp -r "out/installer-$m" "pages/$m"; done
           cp -r out/installer-mewcoder pages/mewcoder
           cp -r out/installer-harmoniser pages/harmoniser
+          cp -r .github/pages/shots pages/shots     # (the page's own screens, each build's beside its section)
           v="2.8.1-smk37-$(git rev-parse --short HEAD)"
           sed -e "s|STEMSBUILD|$v|" -e "s|MEWBUILD|$(cat out/mewcoder-version.txt)|" \
               -e "s|HARMBUILD|$(cat out/harmoniser-version.txt)|" .github/pages/index.html > pages/index.html
