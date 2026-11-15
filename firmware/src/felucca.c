@@ -134,6 +134,7 @@ static uint8_t vis_pg;                   /* which page is up there: 0 the vocode
 #endif
 #if FELUCCA_FLASH
 #include "fm1_flash.h"
+#include "fm1_cache.h"       /* SMK-37 probe: the caches' ways (harmoniser-spec.md §13v-1) */
 static uint8_t flash_ok;                 /* JEDEC id matched at boot (persist_boot) */
 static int st_read(uint32_t off, void *dst, uint32_t n)   /* 256-byte IRQ-off windows: audio keeps up */
 {

@@ -499,76 +499,40 @@ static void con_bled(const char *p)
  * flush_all_dcache, cpu.a cache.c.o, read as LLVM IR): the data cache's ways 0-6 freed as RAM (0x1F28000, 28 KB), way 7
  * kept; the instruction cache untouched. CACHE_CON 0x1EEE008 (b14 idle, b8 / b9 on), 0x1EEE00C the data ways (three
  * 8-bit masks), 0x1EEE010 the instruction ways. Undone by a power cycle */
-#define CC_CON (*(volatile uint32_t *)0x1EEE008u)
-#define CC_DWAY (*(volatile uint32_t *)0x1EEE00Cu)
-#define CC_IWAY (*(volatile uint32_t *)0x1EEE010u)
-#define CC_RAM ((volatile uint32_t *)0x01F28000u)
-#define CC_WORDS (28u * 1024u / 4u)
-/* in RAM, interrupts off, core 1 idle in its RAM loop (the main loop: no audio interrupt running), no calls */
-static void __attribute__((section(".ram_text"), noinline, used)) cache_free_ram(void)
-{
-    volatile uint32_t *t = (volatile uint32_t *)0x01F00000u, *p;
-    uint32_t i, on;
-    __asm__ volatile("csync\n\tssync" ::: "memory");
-    for (i = 1u; i < 2048u; i += 2u) {                  /* every data way's dirty line written back first */
-        uint32_t tg = t[i];
-        if (tg & 0x40000u) {
-            uint32_t a = ((tg << 12) & 0x7FFF000u) | ((i << 4) & 0xFE0u);
-            __asm__ volatile("csync\n\tflush [%0]\n\tcsync" :: "r"(a) : "memory");
-        }
-    }
-    __asm__ volatile("csync\n\tssync" ::: "memory");
-    while (!(CC_CON & 0x4000u))
-        ;
-    on = CC_CON & 0x300u;
-    CC_CON &= ~0x300u;                                  /* the caches off */
-    CC_DWAY = (CC_DWAY & 0xFF000000u) | (1u << 7) | (1u << 15) | (1u << 23);   /* data way 7 only */
-    for (p = (volatile uint32_t *)0x01F00000u; p < (volatile uint32_t *)0x01F04000u; p++)
-        *p = 0;                                         /* the tags clear (as the SDK: the caches start empty) */
-    for (p = (volatile uint32_t *)0x01F0C000u; p < (volatile uint32_t *)0x01F0E200u; p++)
-        *p = 0;
-    for (p = (volatile uint32_t *)0x01F0F000u; p < (volatile uint32_t *)0x01F0F200u; p++)
-        *p = 0;
-    CC_CON |= on;                                       /* on again, as they were */
-    __asm__ volatile("csync" ::: "memory");
-}
-static uint32_t cache_pat(uint32_t i) { return (i * 2654435761u) ^ 0xA5C3F00Du; }
 static void cache_console(const char *p)
 {
+    uint32_t con, dw, iw;
     if (con_word(&p, "free")) {
-        if ((CC_DWAY & 0x7Fu) == 0u) {
-            con_puts("cache: data ways 0-6 not caching already\r\n");
+        if (!fm1_cache_dways_busy()) {
+            con_puts("cache: data ways 0-6 not caching already
+");
         } else {
-            __asm__ volatile("cli" ::: "memory");
-            FL_FAR(cache_free_ram)();
-            __asm__ volatile("csync\n\tsti" ::: "memory");
-            con_puts("cache: data ways 0-6 freed\r\n");
+            fm1_cache_free_dways();
+            con_puts("cache: data ways 0-6 freed
+");
         }
     }
     if (con_word(&p, "test") || con_word(&p, "check")) {
-        uint32_t i, bad = 0, w = 1;
-        if (CC_DWAY & 0x7Fu) {
-            con_puts("cache test: refused, data ways 0-6 still caching (cache free first)\r\n");
+        int w = 1;
+        if (fm1_cache_dways_busy()) {
+            con_puts("cache test: refused, data ways 0-6 still caching (cache free first)
+");
             return;
         }
         if (con_word(&p, "read"))
             w = 0;                                      /* (cache test read: the pattern written before, checked) */
-        if (w)
-            for (i = 0; i < CC_WORDS; i++)
-                CC_RAM[i] = cache_pat(i);
-        for (i = 0; i < CC_WORDS; i++)
-            bad += CC_RAM[i] != cache_pat(i);
         con_puts(w ? "cache test: 28 KB written and read back, errors " : "cache test read: errors ");
-        con_dec((int32_t)bad);
+        con_dec((int32_t)fm1_cache_ram_test(w));
         con_putc(13);
         con_putc(10);
     }
+    fm1_cache_regs(&con, &dw, &iw);
     con_puts("cache con ");
-    con_hex(CC_CON, 8);
+    con_hex(con, 8);
     con_puts(" dways ");
-    con_hex(CC_DWAY, 8);
+    con_hex(dw, 8);
     con_puts(" iways ");
-    con_hex(CC_IWAY, 8);
+    con_hex(iw, 8);
     con_putc(13);
     con_putc(10);
 }
