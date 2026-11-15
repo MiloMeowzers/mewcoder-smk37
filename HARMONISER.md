@@ -11,7 +11,7 @@
 > MIDI as T1's keys (A11); the STEM FX punch-in now sits **after** the lane and the fader (A6, A10); and the **load
 > settings**: LANE THIN, LANE RATE, LANE MONO and POLY CAP in the HOME menu (A8.0). The load is much lower: on the
 > owner's heaviest scene, from the song slowing to 65 % speed (1.5) to real time with no voice shed (1.7.1, A8.2).
-> What to know for early testing: [A13](#a13-early-testing-what-to-expect).
+> How it was tested, and how to keep a heavy setup in time: [A13](#a13-built-and-tested-for-heavy-use).
 
 The harmoniser turns your live voice (the same USB audio in as the [vocoder](VOCODER.md)) into up to **three harmony
 voices that keep your voice's own sound**. The vocoder swaps your voice's timbre for the carrier's; the harmoniser
@@ -601,26 +601,26 @@ menu, another page.
   voice is never taken by another note; with all three voices key- or pad-held a latched pad **waits** and plays when
   one frees). Its press and release go out on **T1's MIDI channel** (velocity 100), are **recorded** while T1
   records, go into T1's arp when it is on, and are muted with T1. Lit in its voice's colour by level, white while held;
-  a latched pad without a voice is not lit (A13).
-- **K1-K3 MICRO** V1-V3: ±100 cents, a stop at 0. **K4-K6 LEVEL** V1-V3 (0 dB by default). **K7 PITCH**. **K8 WET /
-  DRY**.
+  a latched pad without a voice is not lit.
+- **K1-K3 MICRO** V1-V3: ±100 cents, a stop at 0. **K4-K6 LEVEL** V1-V3 (0 dB by default). **K7 PITCH**. **K8 MIX**
+  (T1's).
 
 **G2 PANEL** (the H949's switch row)
 - **Top:** FUNCTION SELECT (IN red / OUT green), F1-F4 (IN: **NORM**, EXTEND (Stage 2), **SHARP**, **FLAT**; OUT:
   Stage 2), **VOICE** (ALL / V1 / V2 / V3: which voices the functions and MANUAL act on), **MANUAL**, **KEYS & MIDI**
   (hold one and press the other: both, **K+M**).
 - **Bottom:** MAIN 6.25 .. 200 ms (Stage 2), **IN / OUT** (OUT: every lane's track straight through, the
-  memory still written; WET / DRY and everything else ignored. The header reads **BYPASSED** in red on every group
+  memory still written; the MIX and everything else ignored. The header reads **BYPASSED** in red on every group
   while it is OUT, and it is always IN after a power-on), **REPEAT** (tap latches, hold is momentary, as NOTE REPEAT).
 - **K1 INPUT LEVEL** (OFF, -40 .. +12 dB), **K3 FEEDBACK**, **K5 LOW EQ**, **K6 HIGH EQ** (the feedback's EQ, shown on
-  the screen as `EQ LO.. HI..`), **K7 PITCH**, **K8 WET / DRY**. K2, K4: nothing yet (Stage 2).
+  the screen as `EQ LO.. HI..`), **K7 PITCH**, **K8 MIX**. K2, K4: nothing yet (Stage 2).
 
 **G3 OUTPUTS**
 - **Top:** **DRY**, **V1**, **V2**, **V3** on / off (each pad its meter), DLY, SPLIT, ALGORITHM (Stage 2), **FB
   LIMIT** (SAFE / H949). **Bottom:** DELAY ONLY (Stage 2), **REPEAT**.
 - **K1 DRY LEVEL**, **K2-K4 LEVEL V1-V3** (the same as G1's K4-K6), **K5 SPREAD** (0: the voices centred; up: V1 to
   the left, V3 to the right, V2 in the middle), **K6 PAN** of the VOICE-selected voice (ALL: the three together; the
-  knob row names it: `K6 PAN V2 L20`), **K7 PITCH**, **K8 WET / DRY**.
+  knob row names it: `K6 PAN V2 L20`), **K7 PITCH**, **K8 MIX**.
 - **Bottom pad 7: VOICE**, the same as G2's VOICE pad (ALL / V1 / V2 / V3), so K6's voice is chosen on the same group.
 
 **The control method** (G2 MANUAL, KEYS & MIDI):
@@ -683,13 +683,17 @@ vocoder settings show CONTROL, INPUT LEVEL, the EQ and FB LIMIT. **The pads reco
 | A faint flutter on sustained low notes | The splice (ALGORITHM 1), most on big intervals down: the H949's colour. |
 | The harmony busy, then sparse, then busy, not with the pattern | T1's cycle and the drum pattern drift against each other, and the harmony follows whichever T1 notes land (the readings show no voice starved): a slow phasing pattern, a mini generative sequence. Line the patterns' lengths up for a steady harmony |
 
-### A13. Early testing: what to expect
+### A13. Built and tested for heavy use
 
-This is an **early testing build**:
-- **Three voices for everything:** the keys, the pads and the sequencer share them. With three pads latched, a fourth
-  waits for a voice, and a latched pad that is waiting is not lit.
-- **The busiest scenes can still have a rare short judder** (no voice shed); the load settings (A8.0) lighten them.
-- **The vocoder is off while HARMONY is on** (by design, for the load).
+A great deal of optimisation went into this build, and it was tested on the unit with **high-BPM, heavy patterns**:
+**six USB channels out and both USB inputs in at full load**, the harmoniser across every track, FM6 pads and sample
+kits, played for hours. Each change was checked against the build before it, bit for bit where the sound must not
+change, by the host tests in the repository ([tests/](tests/): the harmoniser, the lanes, the stems, the punch rings,
+the FM6 loops and more, run on every build).
+
+Every setup is different. To keep a similarly heavy scene in time, use the **load settings** (A8.0): LANE RATE 22K on
+the lanes that do not need the top end, POLY CAP on a thick FM6 track, LANE THIN, LANE MONO, and bank F at 0 for a
+track you do not harmonise. A8.2 has the measured results and A8.4 the order to try them in.
 
 ## Part B: coming next: the H949 page
 
