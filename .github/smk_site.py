@@ -5,7 +5,7 @@ This rewrites a built installer page (OUT_DIR/webapp/installer/index.html) for t
 its heading, its lead and tiles, and the FM-1's words in the messages (both languages); the FM-1 Transporter's
 recovery becomes the SMK-37's own (its USB recovery screen). SLOOP's web/ is not changed.
 
-  .github/smk_site.py OUT_DIR stems|mewcoder MODEL_NAME
+  .github/smk_site.py OUT_DIR stems|mewcoder|harmoniser MODEL_NAME
 """
 import re
 import shutil
@@ -29,6 +29,13 @@ HEAD = {
                  "samples and some engines make room for it.",
                  [("20", "vocoder channels"), ("2", "inputs: voice, carrier, tracks"),
                   ("EXT", "your synth as the carrier"), ("HQ", "44.1 kHz vocoder")]),
+    "harmoniser": (f"Mewcoder + Harmoniser for the {model}",
+                   "Mewcoder now with its own harmoniser: your voice, or any sound you choose, in over USB audio, into up "
+                   "to three harmony voices modelled on the Eventide H949, with a lane of it across every track, each "
+                   "harmonised on its own channel. Mewcoder's 20-channel vocoder is all there. Early testing / "
+                   "pre-release. A lean build: the built-in samples and some engines make room for it.",
+                   [("3", "harmony voices, after the H949"), ("4", "lanes: every track harmonised"),
+                    ("20", "vocoder channels"), ("2", "USB inputs, routed")]),
 }
 title, lead, tiles = HEAD[build]
 COLS = ["blue", "green", "yellow", "orange"]
@@ -42,6 +49,8 @@ def sub1(pat, rep, s, flags=0, expand=False):
 
 
 html = sub1(r"<h1>.*?</h1>", f"<h1>{title}</h1>", html, re.S)
+html = sub1(r"<title>SLOOP installer</title>", "<title>SLOOP installer: " + {"stems": "Multichannel USB audio",
+            "mewcoder": "Mewcoder", "harmoniser": "Mewcoder + Harmoniser"}[build] + "</title>", html)
 html = sub1(r'<p class="lead">.*?</p>', f'<p class="lead">{lead}</p>', html, re.S)
 html = sub1(r'<div class="tiles">.*?</div>\s*</div>',
             '<div class="tiles">\n' + "".join(
@@ -50,15 +59,19 @@ html = sub1(r'<div class="tiles">.*?</div>\s*</div>',
 # the FM-1 Transporter link: the SMK-37 recovers by itself
 html = sub1(r'\s*<a href="https://github.com/kurogedelic/FM-1-transporter"[^>]*>FM-1-transporter</a>', "", html)
 html = sub1(r"M-VAVE and FM-1 are trademarks", "M-VAVE, SMK-37 and FM-1 are trademarks", html)
-if build == "mewcoder":   # no built-in samples in this build
+if build in ("mewcoder", "harmoniser"):   # no built-in samples in these builds
     html = sub1(r" Samples: Versilian Studios[^<]*?not CC0\)\.", "", html)
 
 # the manual (a link beside the editor's) and the screens, under the editor links. The screens are the firmware's own
 # 240 x 240 screens (drawn from its menu and page code), in .github/pages/shots/, copied next to the page
 REPO = "https://github.com/MiloMeowzers/sloop-smk37"
-MANUAL = {"stems": (f"{REPO}/blob/ci/SMK37.md", "The SMK-37 manual"),
-          "mewcoder": (f"{REPO}/blob/mewcoder/VOCODER.md", "The vocoder manual")}[build]
-SITE = "https://milomeowzers.github.io/sloop-smk37/" + ("mewcoder/webapp/installer/" if build == "mewcoder" else "")
+MANUAL = {"stems": (f"{REPO}/blob/ci/SMK37.md", "The SMK-37 manual"),      # (Mewcoder and Mewcoder + Harmoniser share
+          "mewcoder": (f"{REPO}/blob/harmoniser/VOCODER.md", "The vocoder manual"),   # the manuals on the harmoniser
+          "harmoniser": (f"{REPO}/blob/harmoniser/HARMONISER.md", "The harmoniser manual")}[build]   # branch)
+SITE = "https://milomeowzers.github.io/sloop-smk37/" + {"stems": "", "mewcoder": "mewcoder/webapp/installer/",
+                                                        "harmoniser": "harmoniser/webapp/installer/"}[build]
+EDTITLE = {"stems": "SLOOP Editor: Multichannel USB audio", "mewcoder": "SLOOP Editor: Mewcoder",
+           "harmoniser": "SLOOP Editor: Mewcoder + Harmoniser"}[build]
 SHOTS = {
     "stems": [("stems-punch", "The stem punch-in page", "FX held: REV playing on every stem"),
               ("stems-usb", "HOME > USB", "six stems: the drums in four groups"),
@@ -67,6 +80,12 @@ SHOTS = {
                  ("voc-bridge", "Channels 8-14 and BRIDGE", "silence bridging, AUTOCONTROL"),
                  ("voc-setup", "HOME > SETUP", "voice on IN L, your synth as the carrier on IN R"),
                  ("voc-envelope", "HOME > ENVELOPE", "attack, release, BRIDGE MODE")],
+    "harmoniser": [("harm-page", "The HARMONY page", "the PITCH RATIO readout, the interval pads"),
+                   ("harm-faders", "FADER BANK F", "each track's MIX: dry to harmony"),
+                   ("harm-load", "HOME > LANE RATE", "half-rate voices per lane"),
+                   ("harm-poly", "HOME > POLY CAP", "a synth capped while the harmoniser runs"),
+                   ("voc-channels", "The vocoder page", "the 20 channels on the knobs and pads"),
+                   ("harm-voc-setup", "HOME > SETUP", "voice on IN L, your synth as the carrier on IN R")],
 }[build]
 shots_dir = page.parent / "shots"
 shots_dir.mkdir(exist_ok=True)
@@ -104,7 +123,8 @@ EN = {
     "mismatch": "Written, but the keyboard reports another version: ",
     "foreign": "The keyboard is in the update mode of another firmware. Finish that update with its own updater "
                "(M-UPGRADE), then press Install again: ",
-    "editor": "Editor (after installing: sounds, samples, projects" + (", the vocoder" if build == "mewcoder" else "")
+    "editor": "Editor (after installing: sounds, samples, projects"
+              + {"stems": "", "mewcoder": ", the vocoder", "harmoniser": ", the vocoder and the harmoniser"}[build]
               + ", from the computer)",
 }
 JA = {
@@ -155,6 +175,7 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
         continue
     e = ed.read_text(encoding="utf-8")
     e = e.replace("M-VAVE and FM-1 are trademarks", "M-VAVE, SMK-37 and FM-1 are trademarks")
+    e = sub1(r"<title>SLOOP Editor</title>", f"<title>{EDTITLE}</title>", e)   # (the build's name, before connecting)
     e, n = re.subn(KEEP, "SMK-37", e)
     e = e.replace("M-VAVE, SMK-37 and SMK-37 are trademarks", "M-VAVE, SMK-37 and FM-1 are trademarks")
     # the one file for the disk linked SLOOP's FM-1 installer: this build's own instead

@@ -5,7 +5,8 @@
 #   3. this branch for the FM-1, last (the tests read the FM-1 binaries): byte-identical to the baseline, or the run fails
 #   4. the host and web tests: no failure that the baseline does not have, or the run fails
 # The same run builds the second build, Mewcoder (the Elite vocoder package, from the mewcoder branch: uac-in on the
-# private repository), with its own installer site and editor. The packages, their SHA-256 and the logs are the run's
+# private repository), and the third, Mewcoder + Harmoniser (from the harmoniser branch), each with its own installer
+# site and editor (the Pages site: harmoniser/ beside mewcoder/). The packages, their SHA-256 and the logs are the run's
 # artifact. Nothing is installed anywhere. On a public repository the run also publishes both builds' installer sites
 # and editors on GitHub Pages (.github/pages/index.html: Audio stems with its model picker, and Mewcoder at mewcoder/),
 # once every check above has passed, from the ci branch only. To refresh Mewcoder's site after a push to mewcoder, run
@@ -159,6 +160,26 @@ jobs:
           cp "$out/installer-mewcoder/webapp/editor/sloop-editor.html" "$out/sloop-editor-$mv.html"
           (cd "$out" && sha256sum sloop-smk37-elite-vocoder.fwsc | tee -a packages.sha256)
 
+      - name: Mewcoder + Harmoniser (the Elite vocoder build with the harmoniser, from its own branch) and its site
+        run: |
+          # the harmoniser branch in a worktree of its own, built as that branch's own CI builds it; its installer and
+          # editor from its own web/ (the editor that knows the harmoniser)
+          git fetch -q origin harmoniser
+          git worktree add ../harmoniser FETCH_HEAD
+          out="$GITHUB_WORKSPACE/out"
+          cd ../harmoniser
+          BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 \
+            sh build.sh > "$out/build-harmoniser.log" 2>&1 || { tail -50 "$out/build-harmoniser.log"; exit 1; }
+          tail -3 "$out/build-harmoniser.log"
+          hv="2.8.4-mewcoder-harmoniser-$(git rev-parse --short HEAD)"
+          echo "$hv" > "$out/harmoniser-version.txt"
+          cp build/sloop-smk37-elite.fwsc "$out/sloop-smk37-elite-harmoniser.fwsc"
+          python3 web/make_site.py build/sloop-smk37-elite.fwsc "$hv" "$out/installer-harmoniser" > /dev/null
+          python3 "$GITHUB_WORKSPACE/.github/smk_site.py" "$out/installer-harmoniser" harmoniser "SMK-37 Elite"
+          ls "$out/installer-harmoniser/webapp/installer/index.html" "$out/installer-harmoniser/webapp/editor/index.html"
+          cp "$out/installer-harmoniser/webapp/editor/sloop-editor.html" "$out/sloop-editor-$hv.html"
+          (cd "$out" && sha256sum sloop-smk37-elite-harmoniser.fwsc | tee -a packages.sha256)
+
       - name: 3. FM-1, byte-identical to the baseline
         run: |
           sh build.sh > out/build-fm1.log 2>&1 || { tail -50 out/build-fm1.log; exit 1; }
@@ -189,8 +210,10 @@ jobs:
           mkdir -p pages
           for m in pro elite mke; do cp -r "out/installer-$m" "pages/$m"; done
           cp -r out/installer-mewcoder pages/mewcoder
+          cp -r out/installer-harmoniser pages/harmoniser
           v="2.8.1-smk37-$(git rev-parse --short HEAD)"
-          sed -e "s|STEMSBUILD|$v|" -e "s|MEWBUILD|$(cat out/mewcoder-version.txt)|" .github/pages/index.html > pages/index.html
+          sed -e "s|STEMSBUILD|$v|" -e "s|MEWBUILD|$(cat out/mewcoder-version.txt)|" \
+              -e "s|HARMBUILD|$(cat out/harmoniser-version.txt)|" .github/pages/index.html > pages/index.html
           touch pages/.nojekyll
 
       - name: Upload the Pages site

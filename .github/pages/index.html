@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Enhanced SLOOP for the SMK-37</title>
 <style>
-  :root { --bg: #0b0b0c; --fg: #ececec; --dim: #9a9aa0; --line: #2a2a2e; --card: #151517; --acc: #ff9a2e; --acc2: #c58bff; --warn: #ffd54a; }
+  :root { --bg: #0b0b0c; --fg: #ececec; --dim: #9a9aa0; --line: #2a2a2e; --card: #151517; --acc: #ff9a2e; --acc2: #c58bff; --acc3: #4fd6e0; --warn: #ffd54a; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 980px; margin: 0 auto; padding: 32px 16px 48px; }
@@ -18,6 +18,13 @@
   section.build h2 { margin: 0 0 4px; font-size: 1.35rem; }
   section.stems h2 { color: var(--acc); }
   section.mew h2 { color: var(--acc2); }
+  section.harm h2 { color: var(--acc3); }
+  section.harm a.card:hover, section.harm a.card:focus { border-color: var(--acc3); outline: none; }
+  section.harm a.card b { color: var(--acc3); }
+  section.harm li a { color: var(--acc3); }
+  .tag { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+         border: 1px solid var(--acc3); color: var(--acc3); border-radius: 999px; padding: 1px 8px; margin-left: 6px;
+         vertical-align: middle; }
   section.build p.what { color: var(--dim); margin: 0 0 14px; min-height: 6em; }
   h3 { font-size: .9rem; margin: 18px 0 8px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
@@ -42,13 +49,13 @@
 <body>
 <main>
   <h1>Enhanced SLOOP for the M-Vave SMK-37</h1>
-  <p class="sub">Enhanced versions of the SLOOP groovebox firmware on the SMK-37, in two distinct flavours. Install and
+  <p class="sub">Enhanced versions of the SLOOP groovebox firmware on the SMK-37, in three flavours. Install and
     edit from this page: Chrome or Edge, over USB.</p>
 
   <div class="warn"><b>Back up first.</b> Before the first install, make a full 1 MiB flash backup of your keyboard:
     its calibration, Bluetooth pairing and key_mac are its own and no package contains them.
     <a href="https://github.com/MiloMeowzers/sloop-smk37/blob/ci/SMK37.md#install">How to back up</a>.
-    Back up your projects with the editor too. Unofficial firmware, not affiliated with or endorsed by M-Vave.
+    Back up your projects with the editor too. Unofficial firmware, not affiliated with or endorsed by M-Vave, Sennheiser or Eventide.
     No warranty.</div>
 
   <div class="builds">
@@ -108,13 +115,42 @@
       <h3>Read</h3>
       <ul>
         <li><a href="https://github.com/MiloMeowzers/sloop-smk37/tree/mewcoder">Mewcoder's page</a>: what it adds, what it leaves out, the manuals</li>
-        <li><a href="https://github.com/MiloMeowzers/sloop-smk37/blob/mewcoder/VOCODER.md">The vocoder manual</a></li>
+        <li><a href="https://github.com/MiloMeowzers/sloop-smk37/blob/harmoniser/VOCODER.md">The vocoder manual</a> (shared with Mewcoder + Harmoniser)</li>
         <li><a href="https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1">The release</a>: the package and its SHA-256</li>
       </ul>
-      <div class="dev"><b>In development: the harmoniser.</b> Your voice, another external sound, the drums or a synth engine
-        pitch-shifted into up to three harmony voices,
-        modelled on the Eventide H949: its delay memory, feedback, REVERSE and REPEAT, and its big ratio readout.
-        It will come to Mewcoder when it is ready.</div>
+      <div class="dev"><b>Want the harmoniser too?</b> Mewcoder + Harmoniser (beside this) is Mewcoder with it: the same
+        vocoder, the same settings, one more page.</div>
+    </section>
+
+    <section class="build harm">
+      <h2>Mewcoder + Harmoniser <span class="tag">pre-release</span></h2>
+      <p class="what">Mewcoder now with its own harmoniser: your voice, or any sound you choose, into <b>up to three
+        harmony voices</b> modelled on the Eventide H949, with a lane of it across every track, each harmonised on its
+        own channel. Mewcoder's vocoder is all there.</p>
+      <h3>Play it</h3>
+      <ul class="opts">
+        <li><b>HOME &gt; HARMONY: ON</b>: track 1 is the harmoniser; T1's keys, the interval pads and the sequencer play the intervals</li>
+        <li><b>FADER BANK E</b>: PITCH, FEEDBACK, VOICE IN, LANE RATE</li>
+        <li><b>FADER BANK F</b>: each track's MIX, from dry to harmony alone</li>
+        <li><b>The HARMONY page</b>: the PITCH RATIO readout, the HK940's interval pads, the feedback EQ, REPEAT</li>
+      </ul>
+      <p class="what" style="min-height:0"><b>The load settings</b> (LANE THIN, LANE RATE, LANE MONO, POLY CAP) keep a
+        full scene in time. Early testing: the known limits are in the manual.</p>
+      <h3>Install</h3>
+      <div class="grid">
+        <a class="card" href="harmoniser/webapp/installer/"><b>SMK-37 Elite</b><span>the vocoder + harmoniser build (Elite only)</span></a>
+      </div>
+      <h3>Edit</h3>
+      <div class="grid">
+        <a class="card" href="harmoniser/webapp/editor/"><b>Open the editor</b><span>everything, and the Vocoder · Harmony tab</span></a>
+      </div>
+      <h3>Read</h3>
+      <ul>
+        <li><a href="https://github.com/MiloMeowzers/sloop-smk37/tree/harmoniser">Mewcoder + Harmoniser's page</a>: what it adds, what it leaves out</li>
+        <li><a href="https://github.com/MiloMeowzers/sloop-smk37/blob/harmoniser/HARMONISER.md">The harmoniser manual</a> and
+          <a href="https://github.com/MiloMeowzers/sloop-smk37/blob/harmoniser/VOCODER.md">the vocoder manual</a></li>
+        <li><a href="https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder%2Bharmoniser-v0.2-pre">The release</a>: the package and its SHA-256</li>
+      </ul>
     </section>
   </div>
 
@@ -128,7 +164,7 @@
       <a href="https://github.com/isod89/sloop-fm1">SLOOP</a> by isod89, <a href="https://github.com/hugelton/Felucca">Felucca</a>
       by Leo Kuroshita and the SMK-37 layer by <a href="https://github.com/genkigenki/sloop-fm1">genkigenki</a></li>
   </ul>
-  <footer>Multichannel USB audio: STEMSBUILD · Mewcoder: MEWBUILD</footer>
+  <footer>Multichannel USB audio: STEMSBUILD · Mewcoder: MEWBUILD · Mewcoder + Harmoniser: HARMBUILD</footer>
 </main>
 </body>
 </html>
