@@ -50,8 +50,8 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
    your voice is on).
 5. Sing, and hold **G4** on T1: a fifth above you. Then raise a track's MIX on FADER BANK F.
 
-The [harmoniser manual](/HARMONISER.md) has the rest, its known limits in
-[A13](/HARMONISER.md#a13-pre-release-known-limits).
+The [harmoniser manual](/HARMONISER.md) has the rest, what to know for early testing in
+[A13](/HARMONISER.md#a13-pre-release-good-to-know).
 
 Branch `harmoniser` · release [`mewcoder+harmoniser-v0.2-pre`](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder%2Bharmoniser-v0.2-pre) ·
 GPL-3.0-only

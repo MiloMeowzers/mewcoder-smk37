@@ -11,7 +11,7 @@
 > MIDI as T1's keys (A11); the STEM FX punch-in now sits **after** the lane and the fader (A6, A10); and the **load
 > settings**: LANE THIN, LANE RATE, LANE MONO and POLY CAP in the HOME menu (A8.0). The load is much lower: on the
 > owner's heaviest scene, from the song slowing to 65 % speed (1.5) to real time with no voice shed (1.7.1, A8.2).
-> What is not finished yet is listed in [A13](#a13-pre-release-known-limits).
+> What to know for early testing: [A13](#a13-pre-release-good-to-know).
 
 The harmoniser turns your live voice (the same USB audio in as the [vocoder](VOCODER.md)) into up to **three harmony
 voices that keep your voice's own sound**. The vocoder swaps your voice's timbre for the carrier's; the harmoniser
@@ -683,18 +683,12 @@ vocoder settings show CONTROL, INPUT LEVEL, the EQ and FB LIMIT. **The pads reco
 | A faint flutter on sustained low notes | The splice (ALGORITHM 1), most on big intervals down: the H949's colour. |
 | The harmony busy, then sparse, then busy, not with the pattern | T1's cycle and the drum pattern drift against each other, and the harmony follows whichever T1 notes land (the readings show no voice starved): a slow phasing pattern, a mini generative sequence. Line the patterns' lengths up for a steady harmony |
 
-### A13. Pre-release: known limits
+### A13. Pre-release: good to know
 
-This is an **early testing build**. What is known and not finished:
-- **STEM FX with HARMONY on: low level and a late start** (the owner, 1.7.1): the punch-ins come in quiet (FREEZE barely
-  audible) and with a short silence before they cut in. A host test cleared the punch-after-lane arithmetic itself
-  (the same level and timing as before 1.6); the cause is being traced.
-- **A latched interval pad waiting for a voice is dark**, like an unlatched one (a dim amber for "waiting" is planned),
-  and the newest pad does not yet take a voice from the oldest latched pad: with three pads latched, a fourth waits.
-- **The busiest scenes still have a few late halves** (5-16 a 20 s window on the owner's heaviest scene): rare short
-  judders, no voice shed. The lanes' fixed cost (A8.2) is the next saving.
-- **Stage 2** (Part B): the H949's delay functions, MAIN, the splits, DELAY ONLY, ALGORITHM 2 and REPEAT LENGTH. Their
-  pads are on the page, nearly dark, and say `STAGE 2` when pressed.
+This is an **early testing build**:
+- **Three voices for everything:** the keys, the pads and the sequencer share them. With three pads latched, a fourth
+  waits for a voice, and a latched pad that is waiting is not lit.
+- **The busiest scenes can still have a rare short judder** (no voice shed); the load settings (A8.0) lighten them.
 - **The vocoder is off while HARMONY is on** (by design, for the load).
 
 ## Part B: coming next: the H949 page
