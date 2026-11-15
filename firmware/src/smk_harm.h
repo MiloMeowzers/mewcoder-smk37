@@ -1092,7 +1092,8 @@ static uint32_t hm_thin_one(void)
     }
     return 0;
 }
-/* .. and back (audio.c, once ~2 s have passed with no half over 75 %, §13w-1): one voice, the last lanes thinned first */
+/* .. and back (audio.c, once ~2 s have passed with no half over 85 %, §13w-1, 1.7.1): one voice, the last lanes thinned
+ * first */
 static void hm_unthin_one(void)
 {
     static const uint8_t ORD[HL_N] = {HL_DRUM, HL_VOICE, HL_T2, HL_T3};
