@@ -98,7 +98,7 @@ update mode (UBOOT).
 | KNOB 3 | dial 3 on screen (yellow) | K7 | dial 3 |
 | KNOB 4 | dial 4 on screen (orange) | K8 | dial 4 |
 | — | — | KNOB LAYOUT = SMK | HOME menu > SCREEN > KNOB LAYOUT (K7): K1–K4 the dials 1–4, K5 master volume, K6 SELECT, K7 PRESETS, K8 ALGORITHM (track); FM-1 (default) as above |
-| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass), C reverb, D delay (the harmoniser build with HARMONY on: also E HARM, F SENDS). **PICKUP:** after a bank change a fader acts only once it reaches the value the bank holds (within 3 steps, or passing through it either way), so nothing jumps; until then the FADER BANK screen shows it waiting, with an arrow the way to go |
+| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass; open across ±6 steps of the centre), C reverb, D delay (the harmoniser build with HARMONY on: also E HARM: PITCH, FEEDBACK, VOICE IN, LANE RATE; F LANE: each track's dry / harmony MIX). **PICKUP:** after a bank change a fader acts only once it reaches the value the bank holds (within 3 steps, or passing through it either way), so nothing jumps; until then the FADER BANK screen shows it waiting, with an arrow the way to go |
 | — (no wheels used by SLOOP) | — | PITCH wheel | pitch bend, selected synth track: HOME menu > PLAY > BEND UP (K6) / BEND DOWN (K7), OFF, 1, 2, 3, 4, 5, 7, 12 semitones each; default 7 / 7 |
 | — | — | MOD wheel | vibrato 10 Hz, up to ±1 semitone (up = more) |
 | — | — | PEDAL jack | — |

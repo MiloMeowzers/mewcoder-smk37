@@ -285,6 +285,10 @@ The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −1
 | HARMONY | HARMONY | OFF, ON: T1 | track 1 becomes the harmoniser ([HARMONISER.md](HARMONISER.md)) |
 | | INTERVALS | FIXED, SCALE | the keys as fixed intervals from C4, or counted from the sung note in the song's key |
 | | SUNG NOTE | (a readout) | the note the harmoniser hears (INTERVALS SCALE) |
+| | LANE MONO | WITH STEMS, OFF | the lanes' voices mono while the stems stream ([HARMONISER.md A8.0](HARMONISER.md#a80-the-load-settings-home-menu)) |
+| LANE THIN | VOICE, T2, T3, DRUMS | ON, ON, ON, OFF | a lane's sounding voice faded first under load, before a synth voice is shed |
+| LANE RATE | VOICE, T2, T3, DRUMS | 44.1K, 22K | a lane's voices at half rate (about half their work) |
+| POLY CAP | T1, T2, T3 | OFF, 1 .. 5 | while HARMONY or the vocoder runs, that track's synth plays at most that many voices (kept with each project) |
 
 Everything here is also on the vocoder page or the web editor's **Vocoder** tab.
 
@@ -432,8 +436,8 @@ instead:
 - **AUDIO IN** is the unit's setting, never a project's. So are **SETUP, CARRIER, IN L, IN R** and **ENVELOPE**: they
   describe your studio, not a song.
 - A **full backup** from the web editor includes them (backup object 14), with the SMK-37's settings (12) and the DAW
-  map (13). With the harmoniser, object 14 also holds HARMONY, INTERVALS, the HARMONY page and fader banks E and F
-  (512 bytes; an older 480-byte backup restores with the harmoniser at its defaults).
+  map (13). With the harmoniser, object 14 also holds HARMONY, INTERVALS, the HARMONY page, fader banks E and F, the
+  lane settings and POLY CAP (532 bytes; an older 480- or 512-byte backup restores with what it lacks at its defaults).
 
 ## 7. The web editor
 
@@ -445,7 +449,9 @@ Use Mewcoder's own editor: [online](https://milomeowzers.github.io/sloop-smk37/m
   keyboard** applies and saves at once (stop the song first); **Read** loads what the keyboard has now; **Defaults**
   sets every value back (send it to keep it).
 - **The Vocoder tab** also has SETUP, IN L, IN R, TRIM L, TRIM R, ATTACK and RELEASE, and the harmoniser's HARMONY,
-  INTERVALS, CONTROL, INPUT LEVEL, FB LOW EQ, FB HIGH EQ and FB LIMIT (with a build that has them).
+  INTERVALS, CONTROL, INPUT LEVEL, FB LOW EQ, FB HIGH EQ and FB LIMIT (with a build that has them). It does not show
+  the lane settings or POLY CAP yet, and may show the vocoder as running while HARMONY is on: change those on the
+  keyboard ([HARMONISER.md A13](HARMONISER.md#a13-pre-release-known-limits)).
 - **The SMK-37 tab:** the HOME menu's SMK-37 settings, with GATE DELAY and CARRIER's saws (AUTO, 1 SAW, 2 SAWS).
 
 The editor reads these tabs once per connection and again after a restore. Press **Read** after you change something
