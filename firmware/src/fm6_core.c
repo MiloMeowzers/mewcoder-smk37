@@ -51,7 +51,8 @@ enum {
  * goes in waiting on memory, vocoder-ui-spec §7g). What the render calls and the flash calls too (the envelopes' steps,
  * the note's lookups, the core) is inlined into each caller (FM6_AI), so the RAM code calls only itself */
 #if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
-#define FM6_HOT __attribute__((section(".ram_hot"), used, noinline))
+#define FM6_HOT __attribute__((section(".ram_hot"), used, noinline, flatten))   /* (flatten: every call in it inlined,
+                                                     * as the tail's and hm_lane: RAM code may call nothing in the flash) */
 #define FM6_AI inline __attribute__((always_inline))
 #define FM6_AIH inline __attribute__((always_inline))   /* (the maths helpers, inline already: forced, as the loops in RAM
                                                      * may call nothing in the flash) */
