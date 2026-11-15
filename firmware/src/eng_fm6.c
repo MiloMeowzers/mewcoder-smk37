@@ -329,8 +329,7 @@ static int fm6_done(track_t *t, voice_t *v)
  * flash's memset; an arena not FM6's: nothing to render, as a claimed, cleared one gave) */
 static inline __attribute__((always_inline)) fm6_part_t *fm6_part_ram(const track_t *t)
 {
-    uint32_t p = (uint32_t)(t - trk);
-    return p < NPART && eng_arena_own[p] == ENGI_FM6 + 1u ? (fm6_part_t *)&eng_arena[p] : 0;
+    return (fm6_part_t *)eng_arena_peek(t, ENGI_FM6);   /* (engines.c) */
 }
 #endif
 static FM6_HOT void fm6_render(track_t *t, voice_t *v, int32_t *out, uint32_t len, const vmod_t *m)   /* (in RAM: the
