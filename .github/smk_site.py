@@ -204,6 +204,20 @@ html = strings(html[:i], JA) + strings(html[i:], EN)
 page.write_text(html, encoding="utf-8")
 print(f"smk_site.py: {page} ({build}, {model})")
 
+# the icon (the owner's, 2026-11-20: the cat in the magenta ring; .github/pages/icon-*.png, from icon-source.png): in
+# place of SLOOP's in webapp/ (the installer's and the editor's favicon, the app's icons), and the app's name the build's
+PAGES = Path(__file__).parent / "pages"
+for f in ("icon-192.png", "icon-512.png", "icon-maskable-512.png"):
+    shutil.copy(PAGES / f, out / "webapp" / f)
+mf = out / "webapp" / "sloop.webmanifest"
+if mf.exists():
+    import json
+    m = json.loads(mf.read_text(encoding="utf-8"))
+    m["name"], m["short_name"] = BNAME, BNAME
+    m["description"] = f"{BNAME} for the {model}: the editor and the installer, also without internet"
+    mf.write_text(json.dumps(m, indent=1) + "\n", encoding="utf-8")
+ICON48 = "data:image/png;base64," + base64.b64encode((PAGES / "icon-48.png").read_bytes()).decode()
+
 # the editor (both copies: online and the one file for the disk): the device it talks to is the SMK-37. The FM-1's name
 # only ever appears in its words (help, messages, labels): the device is found by a lower-case pattern, never by it
 KEEP = r"FM-1(?![-_.]| V15)"
@@ -213,6 +227,8 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
     e = ed.read_text(encoding="utf-8")
     e = e.replace("M-VAVE and FM-1 are trademarks", "M-VAVE, SMK-37 and FM-1 are trademarks")
     e = sub1(r"<title>SLOOP Editor</title>", f"<title>{EDTITLE}</title>", e)   # (the build's name, before connecting)
+    if ed.name == "sloop-editor.html":                 # (the one file for the disk has no site around it: its icon inlined)
+        e = sub1(r"</title>", f'</title>\n<link rel="icon" href="{ICON48}">', e)
     e, n = re.subn(KEEP, "SMK-37", e)
     e = e.replace("M-VAVE, SMK-37 and SMK-37 are trademarks", "M-VAVE, SMK-37 and FM-1 are trademarks")
     # the one file for the disk linked SLOOP's FM-1 installer: this build's own instead
