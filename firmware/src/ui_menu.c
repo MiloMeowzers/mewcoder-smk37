@@ -432,7 +432,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         return b;
     }
     case MI_FDLY:                                     /* FREEZE's own delay (a delay in use: its own time instead) */
-        return FRZ_DNAME[frz_q % 5u];
+        return FRZ_DNAME[frz_q % FRZ_DN];
 #if SMK_UAC_IN_PROBE
     case MI_VCARR: {                                  /* the carrier: the saws, or a channel (dim: not vocoding; 2 SAWS
                                                        * in FULL: amber, one plays) */
@@ -1085,9 +1085,9 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         br_var = (uint8_t)(v < 0 ? 0 : v > 10 ? 10 : v);
         break;
     }
-    case MI_FDLY: {                                    /* 1/8 .. 1/2 (the ends stop); OCT+ back to 1/4 */
-        int32_t v = s ? (int32_t)(frz_q % 5u) + (s > 0 ? 1 : -1) : (int32_t)FRZ_DQ_DEF;
-        frz_q = (uint8_t)(v < 0 ? 0 : v > 4 ? 4 : v);
+    case MI_FDLY: {                                    /* OFF, 1/8 .. 1/2 (the ends stop); OCT+ back to OFF */
+        int32_t v = s ? (int32_t)(frz_q % FRZ_DN) + (s > 0 ? 1 : -1) : (int32_t)FRZ_DQ_DEF;
+        frz_q = (uint8_t)(v < 0 ? 0 : v > (int32_t)FRZ_DN - 1 ? (int32_t)FRZ_DN - 1 : v);
         break;
     }
 #if SMK_UAC_IN_PROBE

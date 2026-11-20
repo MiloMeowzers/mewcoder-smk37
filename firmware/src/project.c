@@ -900,7 +900,7 @@ static void smkset_fill(smkset_t *s)
     s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
     s->saver = (uint8_t)((cats_idle % CATS_IDLE_N) ^ CATS_IDLE_DEF);
     s->pmask = (uint8_t)((tp_sel & 15u) ^ 15u);
-    s->pflags = (uint8_t)(!br_trip | ((frz_q % 5u) ^ FRZ_DQ_DEF) << 1);
+    s->pflags = (uint8_t)(!br_trip | ((frz_q % FRZ_DN) ^ FRZ_DQ_DEF) << 1);
     s->rsv = br_var;
     {
         uint32_t k, i;
@@ -943,7 +943,7 @@ static int smkset_take(const uint8_t *b, uint32_t n)
             tp_sel = (uint8_t)((s.pmask ^ 15u) & 15u);  /* (the punch's page 2; older: the defaults) */
             br_trip = (uint8_t)!(s.pflags & 1u);
             ix = ((s.pflags >> 1) & 7u) ^ FRZ_DQ_DEF;
-            frz_q = (uint8_t)(ix < 5u ? ix : FRZ_DQ_DEF);
+            frz_q = (uint8_t)(ix < FRZ_DN ? ix : FRZ_DQ_DEF);
             br_var = (uint8_t)(s.rsv <= 10u ? s.rsv : 0u);
             for (k = 0; k < NTRK; k++)
                 for (i = 0; i < BR_NS; i++) {

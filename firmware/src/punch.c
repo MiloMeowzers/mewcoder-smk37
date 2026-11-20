@@ -261,15 +261,21 @@ static TAILINL void punch_freeze_feed(int32_t *rev, const int32_t *l, const int3
  * whatever its MIX and the sends are. A delay already in use (MIX up and something sent to it) is held at its own time;
  * with none, FREEZE DELAY's (HOME > PUNCH 2: 1/8 .. 1/2 at the tempo, 1/4 the default). HARMONY on: the H949 is the
  * delay (T1's lane), FREEZE adds none of its own */
-static const uint8_t FRZ_DQ[5] = {2, 3, 4, 6, 8};       /* FREEZE DELAY: 1/8, 1/8., 1/4, 1/4., 1/2, in quarter beats */
-static const char *const FRZ_DNAME[5] = {"1/8", "1/8.", "1/4", "1/4.", "1/2"};
-#define FRZ_DQ_DEF 2u
+#define FRZ_DN 6u
+static const uint8_t FRZ_DQ[FRZ_DN] = {0, 2, 3, 4, 6, 8};   /* FREEZE DELAY: OFF, 1/8, 1/8., 1/4, 1/4., 1/2 (quarter beats) */
+static const char *const FRZ_DNAME[FRZ_DN] = {"OFF", "1/8", "1/8.", "1/4", "1/4.", "1/2"};
+#define FRZ_DQ_DEF 0u                                   /* OFF (the owner, 2026-11-20: the held delay's 1/4 pulsed, FREEZE
+                                                         * was more usable without it) */
 static uint8_t frz_q = FRZ_DQ_DEF;                      /* (project.c smkset pflags) */
 static TAILINL void punch_freeze_dly(int32_t *dly, const int32_t *l, const int32_t *r, uint32_t n)
 {
     uint32_t i;
     if (!rev_frz) {
         frz_dly = 0;
+        return;
+    }
+    if (!frz_dly && !(frz_q % FRZ_DN)) {               /* (FREEZE DELAY OFF: no delay held, as before) */
+        frz_dly = 3;
         return;
     }
     if (!frz_dly) {                                     /* the freeze begins: the delay in use, or its own */
@@ -284,7 +290,7 @@ static TAILINL void punch_freeze_dly(int32_t *dly, const int32_t *l, const int32
         }
 #endif
         frz_dly = used ? 2u : 1u;
-        s = beat_samples() * FRZ_DQ[frz_q % 5u] / 4u;
+        s = beat_samples() * FRZ_DQ[frz_q % FRZ_DN] / 4u;
         frz_dl = s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
     }
     if (frz_dly > 2u)
