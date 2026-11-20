@@ -199,6 +199,8 @@ static struct {
     uint32_t recentres;                          /* .. times it did */
     uint32_t skips;                              /* frames a queued packet sat through untaken (§13k: the host did not
                                                   * ask, or the answer missed the frame) */
+    volatile uint32_t skip_pend;                 /* .. those not yet made up for (uac6_ring_packet) */
+    uint32_t skip_drops;                         /* frames dropped for them (2026-11-21) */
 #endif
 } uac;
 #if SMK_UAC_IN_PROBE
@@ -1830,6 +1832,18 @@ static uint32_t uac6_ring_packet(uint8_t *d)
     }
     r = ua_r;
     fill = ua_w - r;
+    if (uac.skip_pend) {                                /* (2026-11-21) the host took one packet over several frames: the
+                                                         * others' audio is a gap on its side already. Dropped here too, so
+                                                         * the ring keeps its fill: kept, it grew by a packet a skip and the
+                                                         * +-1 a packet could not take it back before the next skips; the
+                                                         * ring ran full (a block dropped, a recentre) and then empty (an
+                                                         * underrun): more clicks the longer it ran (the owner) */
+        uint32_t lost = uac.skip_pend * n, room = fill > hi ? fill - hi : 0u;
+        uac.skip_pend = 0;
+        lost = lost < room ? lost : room;                /* (never under the band: what fills it stays) */
+        r += lost, fill -= lost;
+        uac.skip_drops += lost;
+    }
     if (uac.recentre) {                                 /* the ring ran full: skip the oldest, back to the band's middle */
         uint32_t t = (lo + hi) / 2u;
         if (fill > t)
@@ -2161,7 +2175,7 @@ static void T5HOT uac_service(void)
     if (uac6_on) {                                      /* (§13k: the frames a queued packet sat through) */
         uint16_t f = (uint16_t)(sie_rd(S_FRAME1) | (sie_rd(S_FRAME2) & 7u) << 8), d = (uint16_t)((f - uac.fr_arm) & 2047u);
         if (uac.queued && d >= 2u && d < 64u)
-            uac.skips += d - 1u;
+            uac.skips += d - 1u, uac.skip_pend += d - 1u;
         uac.fr_arm = f;
     }
 #endif
