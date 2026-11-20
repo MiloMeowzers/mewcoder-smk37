@@ -876,16 +876,17 @@ static void pg2_val(char *b, uint32_t si, const uint8_t *s)
 }
 UI_SMALL static void pg2_screen(void)
 {
-    static uint32_t sig_h, sig_k[2], sig_p;
+    static uint32_t sig_h, sig_k[8], sig_p, sig_c[16];
     static const char *const NAME[8] = {"INTVL", "OFFSET", "GRID", "CHANCE", "GATE", "DECAY", "PITCH", "WET/DRY"};
     static const char *const TN[NTRK] = {"T1", "T2", "T3", "DR"};
-    uint32_t k = br_ksel % NTRK, r, c, i, all = (pg2_hold >> k) & 1u, locked = ly_lock != LY_PLAY, sig;
+    uint32_t k = br_ksel % NTRK, i, all = (pg2_hold >> k) & 1u, locked = ly_lock != LY_PLAY, sig;
     const uint8_t *s = br_s[k];
     char v[12];
     uint16_t col = TE_COL[k];
     if (!pg2_vis) {                                     /* (just opened: everything anew) */
         lcd_fill(0, 0, 240, 240, C_BLACK);
-        sig_h = sig_k[0] = sig_k[1] = sig_p = 0;
+        sig_h = sig_p = 0;
+        memset(sig_k, 0, sizeof sig_k), memset(sig_c, 0, sizeof sig_c);
         pg2_vis = 1;
     }
     /* the header: BEAT REPEAT, LOCK and the keys' track at the centre (as the punch page), the knobs' track right */
@@ -909,67 +910,61 @@ UI_SMALL static void pg2_screen(void)
         cv_rect(0, 22, 240, 1, TE_G1);
         cv_blit(0, 0);
     }
-    /* K1..K8: two rows of four cells, 60 x 54 (25 .. 132) */
-    for (r = 0; r < 2u; r++) {
-        sig = r * 977u + k * 13u + pg2_last * 101u + col;
-        for (c = 0; c < 4u; c++) {
-            pg2_val(v, PG2_K[r * 4u + c], s);
-            sig = studio_hash(sig * 31u, v);
-        }
-        if (sig == sig_k[r])
+    /* K1..K8: two rows of four cells, 60 x 54 (25 .. 132); each redrawn alone, when its own content changes */
+    for (i = 0; i < 8u; i++) {
+        uint32_t lit = PG2_K[i] == pg2_last;
+        int32_t x = (int32_t)(i % 4u) * 60;
+        char kt[3] = {'K', (char)('1' + i), 0};
+        pg2_val(v, PG2_K[i], s);
+        sig = studio_hash(i * 977u + lit * 101u + (lit ? col : 0u) + 1u, v);
+        if (sig == sig_k[i])
             continue;
-        sig_k[r] = sig;
-        cv_begin(240, 54, C_BLACK);
-        for (c = 0; c < 4u; c++) {
-            uint32_t q = r * 4u + c, lit = PG2_K[q] == pg2_last;
-            int32_t x = (int32_t)c * 60;
-            char kt[3] = {'K', (char)('1' + q), 0};
-            cv_rect(x + 1, 0, 58, 53, lit ? col : TE_G2);          /* (the outline: the cell's edge) */
-            cv_rect(x + 2, 1, 56, 51, lit ? TE_G2 : TE_G1);
-            cv_rect(x + 4, 3, 20, 15, TE_COL[q & 3u]);             /* the K tag in the knob's colour */
-            cv_text(x + 6, 2, &FONT_S, kt, C_BLACK);
-            cv_text(x + 5, 18, &FONT_S, NAME[q], lit ? C_WHITE : C_AMB);
-            pg2_val(v, PG2_K[q], s);
-            cv_text(x + 5, 34, &FONT_S, v, lit ? C_WHITE : C_HI);
-        }
-        cv_blit(0, 25u + r * 54u);
+        sig_k[i] = sig;
+        cv_begin(60, 54, C_BLACK);
+        cv_rect(1, 0, 58, 53, lit ? col : TE_G2);              /* (the outline: the cell's edge) */
+        cv_rect(2, 1, 56, 51, lit ? TE_G2 : TE_G1);
+        cv_rect(4, 3, 20, 15, TE_COL[i & 3u]);                 /* the K tag in the knob's colour */
+        cv_text(6, 2, &FONT_S, kt, C_BLACK);
+        cv_text(5, 18, &FONT_S, NAME[i], lit ? C_WHITE : C_AMB);
+        cv_text(5, 34, &FONT_S, v, lit ? C_WHITE : C_HI);
+        cv_blit((uint32_t)x, 25u + (i / 4u) * 54u);
     }
-    /* the pads, as they sit: two rows of eight cells 30 x 30, their groups named above and below */
-    sig = 7u + k * 3u;
-    for (i = 0; i < NTRK; i++) {
-        uint32_t on = (br_on >> i) & 1u, run = on && br_ready && br[i].phase;
-        uint32_t pulse = on && br_ready && !run && (uint32_t)(fm1_ms - br[i].pulse_ms) < 90u;
-        sig = sig * 31u + ((tp_sel >> i) & 1u) * 3u + on * 5u + run * 7u + pulse * 9u + ((br_mute >> i) & 1u) * 11u +
-              TE_COL[i];
-    }
-    if (sig != sig_p) {
-        sig_p = sig;
-        cv_begin(240, 106, C_BLACK);
+    /* the pads, as they sit: two rows of eight cells 30 x 30 (each alone), the groups named above and below */
+    if (!sig_p) {
+        sig_p = 1;
+        cv_begin(240, 16, C_BLACK);
         cv_text(60 - (int32_t)text_w(&FONT_S, "PUNCH") / 2, 0, &FONT_S, "PUNCH", C_AMB);
         cv_text(180 - (int32_t)text_w(&FONT_S, "REPEAT") / 2, 0, &FONT_S, "REPEAT", C_AMB);
-        for (i = 0; i < 16u; i++) {
-            uint32_t q = i & 3u, row = i / 8u, grp = (i / 4u) & 1u;
-            uint32_t on = (br_on >> q) & 1u, run = on && br_ready && br[q].phase;
-            uint32_t pulse = on && br_ready && !run && (uint32_t)(fm1_ms - br[q].pulse_ms) < 90u;
-            int32_t x = (int32_t)(i % 8u) * 30, y = 18 + (int32_t)row * 34;
-            uint16_t f = TE_G1, tc = C_DIM;
-            if (!row && !grp && ((tp_sel >> q) & 1u))
-                f = TE_COL[q], tc = C_BLACK;                       /* PUNCH: the stem punched */
-            else if (!row && grp && (run || on))
-                f = run ? C_WHITE : TE_COL[q], tc = C_BLACK;       /* REPEAT: on; white while it repeats */
-            else if (!row && grp && pulse)
-                f = TE_G4, tc = C_BLACK;                           /* (an INTERVAL) */
-            else if (row && !grp && q == k)
-                f = TE_COL[q], tc = C_BLACK;                       /* KNOBS SET: this track */
-            else if (row && grp && ((br_mute >> q) & 1u))
-                f = TE_RED, tc = C_WHITE;                          /* MUTE */
-            cv_rect(x + 1, y, 28, 30, TE_G2);
-            cv_rect(x + 2, y + 1, 26, 28, f);
-            cv_text(x + 15 - (int32_t)text_w(&FONT_S, TN[q]) / 2, y + 7, &FONT_S, TN[q], tc);
-        }
-        cv_text(60 - (int32_t)text_w(&FONT_S, "KNOBS SET") / 2, 88, &FONT_S, "KNOBS SET", C_AMB);
-        cv_text(180 - (int32_t)text_w(&FONT_S, "MUTE") / 2, 88, &FONT_S, "MUTE", C_AMB);
-        cv_blit(0, 134);                                /* (134 .. 239) */
+        cv_blit(0, 134);
+        cv_begin(240, 16, C_BLACK);
+        cv_text(60 - (int32_t)text_w(&FONT_S, "KNOBS SET") / 2, 0, &FONT_S, "KNOBS SET", C_AMB);
+        cv_text(180 - (int32_t)text_w(&FONT_S, "MUTE") / 2, 0, &FONT_S, "MUTE", C_AMB);
+        cv_blit(0, 222);
+    }
+    for (i = 0; i < 16u; i++) {
+        uint32_t q = i & 3u, row = i / 8u, grp = (i / 4u) & 1u;
+        uint32_t on = (br_on >> q) & 1u, run = on && br_ready && br[q].phase;
+        uint32_t pulse = on && br_ready && !run && (uint32_t)(fm1_ms - br[q].pulse_ms) < 90u;
+        uint16_t f = TE_G1, tc = C_DIM;
+        if (!row && !grp && ((tp_sel >> q) & 1u))
+            f = TE_COL[q], tc = C_BLACK;                           /* PUNCH: the stem punched */
+        else if (!row && grp && (run || on))
+            f = run ? C_WHITE : TE_COL[q], tc = C_BLACK;           /* REPEAT: on; white while it repeats */
+        else if (!row && grp && pulse)
+            f = TE_G4, tc = C_BLACK;                               /* (an INTERVAL) */
+        else if (row && !grp && q == k)
+            f = TE_COL[q], tc = C_BLACK;                           /* KNOBS SET: this track */
+        else if (row && grp && ((br_mute >> q) & 1u))
+            f = TE_RED, tc = C_WHITE;                              /* MUTE */
+        sig = (uint32_t)f * 65537u + tc + 1u;
+        if (sig == sig_c[i])
+            continue;
+        sig_c[i] = sig;
+        cv_begin(30, 30, C_BLACK);
+        cv_rect(1, 0, 28, 30, TE_G2);
+        cv_rect(2, 1, 26, 28, f);
+        cv_text(15 - (int32_t)text_w(&FONT_S, TN[q]) / 2, 7, &FONT_S, TN[q], tc);
+        cv_blit((i % 8u) * 30u, 152u + row * 34u);
     }
 }
 #endif

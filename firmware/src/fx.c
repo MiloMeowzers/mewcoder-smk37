@@ -2442,20 +2442,13 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
                                                          * source's slot, the source on 5-6: those fade, the RET holds;
                                                          * harmoniser-spec.md §13u-4a) */
                 dry = (15u & ~(1u << (smk_pair == SP_DRUMS ? 3u : (uint32_t)smk_pair - SP_T1))) | 48u;
-            for (i = 0; i < n; i++) {
+            for (i = 0; i < n; i++) {                   /* (the return as it is: a make-up gain here, 4dda40a, brought
+                                                         * the held lines' noise up: the owner, "mainly noise") */
                 int32_t f = t0 + i < PX_FRZ_CAP ? (int32_t)((t0 + i) << PX_FRZ_SH) : 32767;
-                int32_t sh = (int32_t)(((int64_t)f * punch.g) >> 15), g = 32767 - sh;
-                int32_t hl = (int32_t)(((int64_t)rev_l[i & (CTL - 1u)] * punch.fg) >> 10);   /* (the held sound as the
-                                                         * master plays it: punch.c PX_FREEZE, its make-up gain) */
-                int32_t hr = (int32_t)(((int64_t)rev_r[i & (CTL - 1u)] * punch.fg) >> 10);
-                for (c = 0; c < 6u; c++) {
-                    int32_t h = c == 4u ? hl : c == 5u ? hr : (hl >> 1) + (hr >> 1);
+                int32_t g = 32767 - (int32_t)(((int64_t)f * punch.g) >> 15);
+                for (c = 0; c < 6u; c++)
                     if ((dry >> c) & 1u)
                         stem_stage[c][i] = (int32_t)(((int64_t)stem_stage[c][i] * g) >> 15);
-                    else                                /* the return: towards the held sound (it was quiet: the
-                                                         * owner, 2026-11-20) */
-                        stem_stage[c][i] += (int32_t)(((int64_t)(h - stem_stage[c][i]) * sh) >> 15);
-                }
             }
         }
         stem_sm0 = stem_sm1 = 4096;                     /* a fixed level: the stems do not follow MASTER (the DAW

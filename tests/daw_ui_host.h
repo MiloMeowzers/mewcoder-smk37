@@ -18,8 +18,9 @@ static uint8_t stem_rate, stem_light;           /* (usb.c: menu USB > STEM RATE,
 enum { TPX_128, TPX_64, TPX_256, TPX_N };   /* (smk_tpunch.h: menu PUNCH > XFADE, CURVE) */
 static uint8_t tp_xfl, tp_lin;
 static uint8_t br_trip = 1, br_var;             /* (smk_brep.h: menu PUNCH 2 > TRIPLETS, VARIATION) */
-#define FRZ_DQ_DEF 2u                           /* (punch.c: menu PUNCH 2 > FREEZE DELAY) */
-static const char *const FRZ_DNAME[5] = {"1/8", "1/8.", "1/4", "1/4.", "1/2"};
+#define FRZ_DQ_DEF 0u                           /* (punch.c: menu PUNCH 2 > FREEZE DELAY) */
+#define FRZ_DN 6u
+static const char *const FRZ_DNAME[FRZ_DN] = {"OFF", "1/8", "1/8.", "1/4", "1/4.", "1/2"};
 static uint8_t frz_q = FRZ_DQ_DEF;
 static void cats_open(uint32_t why) { (void)why; }   /* (splash.c: ABOUT's cats) */
 static uint8_t sq_carry;                       /* (smk_seqfx.h: menu SEQ > FLIP RETURN) */
