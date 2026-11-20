@@ -502,7 +502,11 @@ UI_SMALL static void fm1_main(void)
         panel_setup();                        /* OCT- + OCT+ held at power-on */
         settings_save();
     }
+#if BOARD_SMK37
+    splash_play();                                      /* the dancing cats until a key (splash.c) */
+#else
     fm1_delay_ms(900);                                  /* (the logo stays a moment) */
+#endif
     lcd_fill(0, 0, 240, 240, C_BLACK);
 
     healthy_since = fm1_ms;
