@@ -3426,7 +3426,7 @@ function makeMockDevice(opt = {}) {
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
     smkset: Uint8Array.from({ length: 60 }, (_, i) => [0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1][i] || 0),   /* project.c smkset_t (60 bytes since 2026-11-20: 0 = the defaults) */
     vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
-      const v = new Uint8Array(532);                  /* (532 bytes since POLY CAP: both vocoder builds since the merge) */
+      const v = new Uint8Array(536);                  /* (536 bytes since LANE IN: both vocoder builds since the merge) */
       v.set([6, 6, 6], 512);                          /* POLY CAP T1 .. T3: AUTO (FM6 at 4) */
       v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 7, 127, 0, 0, 0, 0, 2, 1, 0], 0);
       if (opt.harm === "on") v[478] = 1;              /* (?harm=on: HARMONY on) */
@@ -3876,7 +3876,7 @@ function makeMockDevice(opt = {}) {
             }
             else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
             else if (id >= 12 && id <= 14) {                /* SMK-37 (editor.c: stopped only; 13 taken, not modelled) */
-              if (id !== 13 && (id === 12 ? P.len !== 20 && P.len !== 60 : P.len !== 480 && P.len !== 512 && P.len !== 532)) throw 0;   /* (532: POLY CAP) */
+              if (id !== 13 && (id === 12 ? P.len !== 20 && P.len !== 60 : P.len !== 480 && P.len !== 512 && P.len !== 532 && P.len !== 536)) throw 0;   /* (532: POLY CAP) */
               if (st.playing) rc = 3;
               else if (id === 12) st.smkset = P.buf.slice();
               else if (id === 14) st.vocset = P.buf.slice();
@@ -7884,6 +7884,8 @@ const OB_DB = (a, b, st, z) => Array.from({ length: (b - a) / st + 1 }, (_, i) =
 const OB_BEND = [0, 1, 2, 3, 4, 5, 7, 12].map((x) => [x, `${x} ST`]);
 const OB_MIX = ["OFF", ...Array.from({ length: 11 }, (_, i) => `${-30 + 3 * i} DB`)];   /* DRY, HF: OFF, -30 .. 0 dB */
 const OB_PCT = Array.from({ length: 128 }, (_, i) => [i, `${Math.round(i * 100 / 127)} %`]);   /* a fader's 0 .. 127 */
+/* LANE IN (harmoniser-spec.md §14): LEVEL's scale, 0.5 dB a step, 112 = 0 dB, 0 off; kept ^ 112 (0 = 0 dB) */
+const OB_LIN = Array.from({ length: 128 }, (_, v) => [v ^ 112, v ? `${((v - 112) / 2).toFixed(1)} DB` : "OFF"]);
 const OB_PIT = Array.from({ length: 128 }, (_, k) => {   /* PITCH: -64 .. 63 as a signed byte, in semitones (ui_fbank.c) */
   const f = k - 64, t10 = Math.trunc(f < 0 ? f * 240 / 64 : f * 120 / 63);
   return [f & 255, `${t10 > 0 ? "+" : t10 < 0 ? "-" : ""}${(Math.abs(t10) / 10).toFixed(1)} ST`];
@@ -7907,7 +7909,7 @@ const OB = {
     ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0],
     ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0],
     ["saws", 19, "CARRIER SAWS (VOCODER)", ["AUTO", "1 SAW", "2 SAWS"], 0]] },
-  vocoder: { id: 14, len: 532, lens: [480, 512, 532], magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
+  vocoder: { id: 14, len: 536, lens: [480, 512, 532, 536], magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
     ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
     ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
     ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF", "HARMONY"], 0],
@@ -7944,6 +7946,8 @@ const OB = {
     ["lt2", 478, "LANE THIN: T3", ["OFF", "ON"], 1], ["lt3", 478, "LANE THIN: DRUMS", ["OFF", "ON"], 0],
     ["lr0", 479, "LANE RATE: VOICE", ["44.1K", "22K"], 0], ["lr1", 479, "LANE RATE: T2", ["44.1K", "22K"], 0],
     ["lr2", 479, "LANE RATE: T3", ["44.1K", "22K"], 0], ["lr3", 479, "LANE RATE: DRUMS", ["44.1K", "22K"], 0],
+    ["lin1", 532, "T2 LANE IN (BANK G)", OB_LIN, 0], ["lin2", 533, "T3 LANE IN (BANK G)", OB_LIN, 0],
+    ["lin3", 534, "DRUM LANE IN (BANK G)", OB_LIN, 0],
     ["hpit", 502, "PITCH (BANK E)", OB_PIT, 0], ["hfb", 503, "FEEDBACK (BANK E)", OB_PCT, 0],
     ["hvin", 505, "VOICE IN (BANK E)", OB_PCT, 100],
     ["hwd", 504, "T1 MIX (BANK F)", OB_PCT, 64], ["hs1", 506, "T2 MIX (BANK F)", OB_PCT, 0],

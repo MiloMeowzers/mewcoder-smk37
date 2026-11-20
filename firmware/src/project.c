@@ -1039,6 +1039,8 @@ typedef struct {
     uint8_t pcap[3], pchave;             /* POLY CAP (harmoniser-spec.md §13w-2): T1..T3 now; pchave bit k: slot k's below
                                           * (an object of 512 bytes, before them: OFF, none) */
     uint8_t pcsec[4][4];                 /* .. each project slot's (saved with it, applied when it loads) */
+    uint8_t lin[4];                      /* LANE IN T2, T3, DRUMS (harmoniser-spec.md §14; ^ HM_LIN_0: 0 = 0 dB), a spare
+                                          * (an object of 532 bytes, before them: 0 dB) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
@@ -1047,6 +1049,7 @@ typedef struct {
 #define VOCSET_V5 476u                   /* (.. before the 12-step DRY / HF) */
 #define VOCSET_V6 480u                   /* (.. before the HARMONY page) */
 #define VOCSET_V7 512u                   /* (.. before POLY CAP) */
+#define VOCSET_V8 532u                   /* (.. before LANE IN) */
 #if SMK_HARM_BUILD
 #define VOCSET_HSET_SZ sizeof(hset_t)
 #define VOCV_MODE() (hm_on ? hm_vmode : voc_mode)   /* (HARMONY on: the mode set aside, not AUDIO's lock) */
@@ -1055,7 +1058,7 @@ typedef struct {
 #define VOCSET_HSET_SZ 22u
 #define VOCV_MODE() voc_mode
 #endif
-_Static_assert(sizeof(vocset_t) == VOCSET_V7 + 20u && __builtin_offsetof(vocset_t, pcap) == VOCSET_V7 &&
+_Static_assert(sizeof(vocset_t) == VOCSET_V8 + 4u && VOCSET_V8 == VOCSET_V7 + 20u && __builtin_offsetof(vocset_t, pcap) == VOCSET_V7 &&
                __builtin_offsetof(vocset_t, hset) == VOCSET_V6 &&
                VOCSET_HSET_SZ == sizeof(((vocset_t *)0)->hset), "vocset: the HARMONY page after the 480 bytes");
 _Static_assert(VOCSET_V6 == VOCSET_V5 + 4u && VOCSET_V5 == VOCSET_V4 + 4u && VOCSET_V4 == VOCSET_V3 + 5u * 80u && sizeof(vocpg_t) == 80u &&
@@ -1134,7 +1137,7 @@ static int vocset_take(const uint8_t *b, uint32_t n)
 {
     static vocset_t s;                                 /* (472 bytes: not on the stack) */
     uint32_t k;
-    if (n != sizeof s && n != VOCSET_V7 && n != VOCSET_V6 && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 &&
+    if (n != sizeof s && n != VOCSET_V8 && n != VOCSET_V7 && n != VOCSET_V6 && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 &&
         n != VOCSET_V2 && n != VOCSET_V1)
         return 0;
     memset(&s, 0, sizeof s);                           /* (an older, shorter object: the rest none / OFF) */
@@ -1171,6 +1174,8 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         for (k = 0; k < 3u; k++)                       /* POLY CAP (§13w-2; older, before it: AUTO, the default) */
             hm_pcap[k] = (uint8_t)(n <= VOCSET_V7 || s.pcap[k] > HM_PCAP_AUTO ? HM_PCAP_AUTO : s.pcap[k]);
 #if SMK_HARM_BUILD
+        for (k = 1; k < 4u; k++)                       /* LANE IN (§14; older: 0 dB) */
+            hm_lin[k] = (int16_t)((s.lin[k - 1u] ^ HM_LIN_0) & 127u);
         if (s.hhave) {                                 /* the HARMONY page and banks E / F (older: as they are) */
             hset_t h;
             memcpy(&h, s.hset, sizeof h);
@@ -1240,6 +1245,8 @@ static void vocset_fill(void)                      /* the object as it is now (a
     memcpy(vocset.hsend, hm_send, sizeof vocset.hsend);
     vocset.hhave = 1;
     vocset.hspread = hm_spread, vocset.spair = (uint8_t)(smk_pair % SP_N);
+    vocset.lin[0] = (uint8_t)((hm_lin[1] & 127) ^ HM_LIN_0), vocset.lin[1] = (uint8_t)((hm_lin[2] & 127) ^ HM_LIN_0);
+    vocset.lin[2] = (uint8_t)((hm_lin[3] & 127) ^ HM_LIN_0);
 #else                                                  /* (Mewcoder: the harmoniser's bytes as read) */
     memcpy(vocset.pcap, hm_pcap, sizeof vocset.pcap);
     vocset.spair = (uint8_t)(smk_pair % SP_N);
@@ -1711,6 +1718,25 @@ UI_SMALL static void sections_flush(void)                        /* main loop */
             settings_later = 1;
         }
     }
+#if BOARD_SMK37
+    {   /* the punch's page 2 (BEAT REPEAT's settings, the stems punched, PUNCH 2) and LANE IN: kept as GLO's are, saved
+         * once stopped and quiet (smkset, vocset: settings_save). Not the latches or MUTE (a performance's) */
+        static uint32_t seen;
+        uint32_t h = 2166136261u, k, i;
+        for (k = 0; k < NTRK; k++)
+            for (i = 0; i < BR_NS; i++)
+                h = (h ^ br_s[k][i]) * 16777619u;
+        h = (h ^ tp_sel) * 16777619u, h = (h ^ br_trip) * 16777619u, h = (h ^ br_var) * 16777619u;
+        h = (h ^ frz_q) * 16777619u;
+#if SMK_HARM_BUILD
+        for (k = 1; k < 4u; k++)
+            h = (h ^ (uint32_t)hm_lin[k]) * 16777619u;
+#endif
+        if (seen && h != seen)
+            settings_later = 1;
+        seen = h;
+    }
+#endif
     if (settings_later) {                               /* the menu closed while playing */
         settings_later = 0;
         song_dirty = 1;                                 /* (settings_save when quiet, with the song) */

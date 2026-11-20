@@ -183,6 +183,14 @@ typedef struct {
  * full scale; a block's peak is known before it plays, so the gain drops at once for the block (no clip) and comes back
  * over ~90 ms. Under HM_LIM the gain is 32768: the input exactly as before */
 #define HM_LIM 29204                     /* -1 dBFS */
+/* the lanes' gain structure (harmoniser-spec.md §14, the owner 2026-11-21: "a workable gain control for T2", the
+ * limiter making levels jump): each lane's own input level before it (FADER BANK G, LANE IN: T2, T3, DRUMS; T1's
+ * column VOICE IN), on LEVEL's scale (LEVEL_Q12: 112 = 0 dB, 0.5 dB a step, 0 off); and 6 dB of headroom inside every
+ * lane: the input halved on its way in (fx.c hm_insert), the wet doubled on its way out, so the memory, the feedback and
+ * the knee have room and the limiter only meets true peaks */
+#define HM_LIN_0 112u                    /* 0 dB */
+#define HM_HEAD 1                        /* the headroom: 6 dB (a shift) */
+static int16_t hm_lin[4] = {HM_LIN_0, HM_LIN_0, HM_LIN_0, HM_LIN_0};   /* T2, T3, DRUMS (VOICE's: VOICE IN); kept, vocset */
 /* skip silent work (harmoniser-spec.md §13f): a lane whose input, voices and feedback have stayed under HM_QTHR (int16
  * scale: ~-80 dB) for longer than its memory (HM_LEN: 320 ms) does nothing until its input wakes it; REPEAT holds it
  * awake. Everything it would have made is under -80 dB, so the output is silence either way */
@@ -758,7 +766,9 @@ static uint32_t HM_RAMHOT hm_lane(uint32_t k, const int32_t *in, int32_t *wl, in
             }
             t = pkb > HM_LIM ? (int32_t)(((int64_t)HM_LIM << 15) / pkb) : 32768;
             if (t < lg0)
-                lg0 = lg1 = t;                          /* (down at once: no sample of the block over HM_LIM) */
+                lg1 = t;                                /* (down across the block, from where it was: no step in the
+                                                         * gain, the click it made, §14; the block's first samples may
+                                                         * pass HM_LIM a little: the headroom and the clamp take them) */
             else
                 lg1 = lg0 + ((t - lg0) >> 7) + (t > lg0); /* (back up over ~90 ms) */
             L->lg = lg1;
