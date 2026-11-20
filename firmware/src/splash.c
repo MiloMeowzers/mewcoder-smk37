@@ -224,13 +224,6 @@ static void splash_play(void)
     for (;;) {
         fm1_wdt_feed();
         usb_retry(fm1_ms);
-#if FELUCCA_OTA
-        ed_service();                                   /* (the editor and the installer answered meanwhile: an update's
-                                                         * check after the restart finds it, 0f613fb's did not) */
-        ota_service();
-        if (usb.ota_req || usb.uboot_req)
-            break;                                      /* (an update or UBOOT asked: the main loop takes it) */
-#endif
         if (fm1_in.notes | fm1_in.buttons | (uint32_t)fm1_in.keys | (uint32_t)(fm1_in.keys >> 32))
             break;
         if ((int32_t)(fm1_ms - next) >= 0) {
