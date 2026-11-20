@@ -61,8 +61,8 @@ html = sub1(r"<h1>.*?</h1>", f"{CATS_IMG}\n  <h1>{title}</h1>", html, re.S)
 html = sub1(r"</head>", "<style>.cats { float: right; width: 150px; height: auto; margin: 0 0 12px 18px; background: #000;"
             " border-radius: 8px; } .tiles { clear: both; } @media (max-width: 520px) { .cats { width: 110px; } }</style>\n"
             "</head>", html)
-html = sub1(r"<title>SLOOP installer</title>", "<title>SLOOP installer: " + {"stems": "Multichannel USB audio",
-            "mewcoder": "Mewcoder", "harmoniser": "Mewcoder + Harmoniser"}[build] + "</title>", html)
+html = sub1(r"<title>SLOOP installer</title>", "<title>" + {"stems": "Multichannel", "mewcoder": "Mewcoder",
+            "harmoniser": "Mewcoder + Harmoniser"}[build] + " installer</title>", html)
 html = sub1(r'<p class="lead">.*?</p>', f'<p class="lead">{lead}</p>', html, re.S)
 html = sub1(r'<div class="tiles">.*?</div>\s*</div>',
             '<div class="tiles">\n' + "".join(
@@ -85,8 +85,19 @@ SITE = "https://milomeowzers.github.io/sloop-smk37/" + {"stems": "", "mewcoder":
 BNAME = {"stems": "Multichannel", "mewcoder": "Mewcoder", "harmoniser": "Mewcoder + Harmoniser"}[build]
 # "2.8.4-mewcoder-harmoniser-a8b1ae9" -> "2.8.4  a8b1ae9" (the boot screen's version line)
 VSHOW = f"{version.split('-')[0]}  {version.split('-')[-1]}" if "-" in version else version
-EDTITLE = {"stems": "SLOOP Editor: Multichannel USB audio", "mewcoder": "SLOOP Editor: Mewcoder",
-           "harmoniser": "SLOOP Editor: Mewcoder + Harmoniser"}[build]
+EDTITLE = f"{BNAME} editor"
+# the build's name and version (as the keyboard's boot screen shows them: the "+" and the version in magenta), at the
+# top of the installer and of the editor's side bar, in place of SLOOP's logo
+BRAND = ("<b>" + BNAME.upper().replace(" + ", " <i>+</i> ") + "</b>" +
+         (f"<small>{htmlmod.escape(VSHOW)}</small>" if VSHOW else ""))
+BRAND_CSS = (".smkb { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }"
+             " .smkb b { font-size: 15px; font-weight: 600; letter-spacing: .06em; line-height: 1.25; }"
+             " .smkb i { font-style: normal; color: #ff40ff; }"
+             " .smkb small { font-size: 12px; color: #ff40ff; white-space: pre; }")
+html = sub1(r'<div class="logo">.*?</div>', f'<div class="logo smkb">{BRAND}</div>', html, re.S)
+html = sub1(r"</head>", f"<style>{BRAND_CSS} .smkb b {{ font-size: 18px; }}</style>\n</head>", html)
+# the package's line once it is checked: the build, not "SLOOP <version>"
+html = sub1(r"say\(`SLOOP \$\{meta\.version\}`\);", f'say("{BNAME}  {VSHOW}".trim());', html)
 SHOTS = {
     "stems": [("stems-punch", "The stem punch-in page", "FX held: REV playing on every stem"),
               ("stems-usb", "HOME > USB", "six stems: the drums in four groups"),
@@ -198,19 +209,16 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
     # the manual, beside the installer link under the connect button
     e = sub1(r'(<a class="dim" href="[^"]*"(?: target="_blank" rel="noopener")? data-t="installer"></a>)',
              rf'\1<a class="dim" href="{MANUAL[0]}" target="_blank" rel="noopener">Manual</a>', e, expand=True)
-    # the side bar's top: the build's name and its version (as the keyboard's boot screen shows them: the "+" and the
-    # version in magenta), in place of SLOOP's logo and "editor"
+    # the side bar's top: the build's name and its version, in place of SLOOP's logo and "editor"
     e = sub1(r'<a class="brand" href="#sound" aria-label="SLOOP">.*?</a>',
-             f'<a class="brand smkb" href="#sound" aria-label="{htmlmod.escape(BNAME)}"><b>' +
-             BNAME.upper().replace(" + ", ' <i>+</i> ') + "</b>" +
-             (f"<small>{htmlmod.escape(VSHOW)}</small>" if VSHOW else "") + "</a>", e, re.S)
+             f'<a class="brand smkb" href="#sound" aria-label="{htmlmod.escape(BNAME)}">{BRAND}</a>', e, re.S)
     # (the side bar's top tighter: the name is shorter than the logo was)
-    e = sub1(r"</head>", "<style>.brand.smkb { flex-direction: column; align-items: flex-start; gap: 4px; }"
-             " .smkb b { font-size: 15px; font-weight: 600; letter-spacing: .06em; line-height: 1.25; }"
-             " .smkb i { font-style: normal; color: #ff40ff; }"
-             " .smkb small { font-size: 12px; color: #ff40ff; white-space: pre; }"
+    e = sub1(r"</head>", f"<style>{BRAND_CSS}"
              " @media (min-width: 861px) { .side { padding-top: 12px; } .brand.smkb { margin-bottom: -8px; } }"
              "</style>\n</head>", e)
+    # the vocoder line's editors name themselves on connecting ("SLOOP Editor: Mewcoder ..."): the build's name
+    e = e.replace('"SLOOP Editor: Mewcoder + Harmoniser"', '"Mewcoder + Harmoniser editor"')
+    e = e.replace('"SLOOP Editor: Mewcoder"', '"Mewcoder editor"').replace(': "SLOOP Editor";', f': "{EDTITLE}";')
     # SLOOP's installer link names this build's installer (it links there already)
     for a, b in (('installer: "SLOOP installer"', 'installer: "Installer"'),
                  ('installer: "SLOOP インストーラー"', 'installer: "インストーラー"')):
