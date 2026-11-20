@@ -184,10 +184,21 @@ static void lk_push(uint32_t layer, uint32_t k, uint32_t down)
 
 /* ------------------------------------------------------------- keys --- */
 /* the keys of track t play through its scale (kb_pitch): not the drum track, not the GM kit, not SLICE (their own maps) */
+/* (2026-11-12) HARMONY's T1 (smk_harm.h): its keys are the intervals, plain from C4: no SCALE / QNT / ROOT / TRN
+ * mapping, no CHORD (a synth preset's settings, inherited, made silent black keys, uneven steps and chords of voices) */
+#ifdef SMK_HARM
+#define TRK_CHORD(t) (HM_T(t) ? 0 : (t)->p[P_CHORD])
+#else
+#define TRK_CHORD(t) ((t)->p[P_CHORD])
+#endif
 static int kb_scaled(const track_t *t)
 {
     if (is_drum(t))
         return 0;
+#ifdef SMK_HARM
+    if (HM_T(t))
+        return 0;
+#endif
     if (ENGINES[t->eng_req % NENGINES] == &ENG_SAMPLE && drum_set() >= 0 &&   /* (the engine it switches to) */
         (uint32_t)t->p[P_E0] % SMP_NSETS == (uint32_t)drum_set())
         return 0;
@@ -249,6 +260,10 @@ static uint32_t kb_map(const track_t *t, uint32_t k)
 #if FELUCCA_SLICE
     if (ENGINES[t->eng_req % NENGINES] == &ENG_SLICE)   /* SLICE: lowest key = slice 0 (C4 + ROOT), no scale */
         return (uint32_t)clamp(SLC_BASE + t->p[P_ROOT] + 12 * song.octave + (int32_t)k, 0, 127);
+#endif
+#ifdef SMK_HARM
+    if (HM_T(t))                                         /* HARMONY: chromatic, the octave buttons only (kb_pitch's base) */
+        return (uint32_t)clamp(53 + 12 * song.octave + (int32_t)k, 0, 127);
 #endif
     return kb_pitch(t, k, song.octave);
 }
@@ -1730,7 +1745,15 @@ static int arp_step(track_t *t)
  * each note it plays is recorded (what you hear) */
 static void arp_tick(track_t *t, uint32_t adv)
 {
-    uint32_t div = (uint32_t)t->p[P_ARATE] % NDIV_SHORT, u = div_units(div), into, slen, abs = 0, fire = 0;
+    uint32_t div, u, into, slen, abs = 0, fire = 0;
+#if BOARD_SMK37
+    if (!t->arp_note && (!t->p[P_AMODE] || !t->nheld)) {   /* (harmoniser-spec.md §13t: off, or no key, nothing sounding:
+                                                    * the return below, before the rate's divisions) */
+        t->arp_new = 0;
+        return;
+    }
+#endif
+    div = (uint32_t)t->p[P_ARATE] % NDIV_SHORT, u = div_units(div);
     if (t->arp_note) {
         if (t->arp_off <= adv) {
             arp_end(t);
@@ -2159,7 +2182,7 @@ static void chord_revoice(uint32_t sel)
     for (k = 0; k < 27u; k++) {
         uint8_t nw[4];
         uint32_t nn;
-        if (kb_kind[k] != KS_NOTE || kb_trk[k] != sel || !t->p[P_CHORD] || is_drum(t))
+        if (kb_kind[k] != KS_NOTE || kb_trk[k] != sel || !TRK_CHORD(t) || is_drum(t))
             continue;
         nn = chord_play_notes(t, kb_root[k], mods, nw);
         for (i = 0; i < kb_n[k]; i++) {             /* the notes it loses */
@@ -2337,8 +2360,8 @@ static void key_down(uint32_t k)
             uint32_t n = kb_map(t, k);
             if (n == KB_SILENT)
                 return;
-            kb_n[k] = (uint8_t)(t->p[P_CHORD] ? chord_notes(t, n, kb_nt[k]) : 1u);
-            if (!t->p[P_CHORD])
+            kb_n[k] = (uint8_t)(TRK_CHORD(t) ? chord_notes(t, n, kb_nt[k]) : 1u);
+            if (!TRK_CHORD(t))
                 kb_nt[k][0] = (uint8_t)n;
             for (i = 0; i < kb_n[k]; i++)
                 er_notes[(kb_nt[k][i] >> 5) & 3u] |= 1u << (kb_nt[k][i] & 31u);
@@ -2372,7 +2395,7 @@ static void key_down(uint32_t k)
     {
         uint32_t n = kb_map(t, k);
         if (n == KB_SILENT) {
-            if (t->p[P_CHORD] && layer == LY_PLAY && chord_mod_of_key(k)) {   /* CHORD+: a modifier key */
+            if (TRK_CHORD(t) && layer == LY_PLAY && chord_mod_of_key(k)) {   /* CHORD+: a modifier key */
                 kb_kind[k] = KS_MOD;
                 chord_revoice(sel);
             }
@@ -2388,7 +2411,7 @@ static void key_down(uint32_t k)
         kb_kind[k] = KS_NOTE;
         kb_root[k] = (uint8_t)n;
         kb_oct[k] = (int8_t)song.octave;
-        if (t->p[P_CHORD]) {
+        if (TRK_CHORD(t)) {
             kb_n[k] = (uint8_t)chord_play_notes(t, n, chord_mods(), kb_nt[k]);   /* (the modifiers held, voiced) */
         } else {
             kb_nt[k][0] = (uint8_t)n;
@@ -3203,6 +3226,9 @@ static void seq_tick(track_t *t, uint32_t adv)
     }
     if (!song.playing)
         return;
+    TIM_VOC_T(tq);                                   /* (Build 1.3: the sequencer's parts, every track summed: console
+                                                      * q_grid (where the grid is, the micro timing), q_fire (a new step:
+                                                      * locks, notes, MIDI out), q_rest (the ratchets, the gate) */
     abs = trk_grid(t, &into, &slen);
     {
         uint32_t div = trk_div(t);
@@ -3225,6 +3251,7 @@ static void seq_tick(track_t *t, uint32_t adv)
             fire = 1;                                /* the grid jumped ahead: catch up, a step a block */
         /* (abs + 1 == seq_abs: SWING turned up inside a played odd step: nothing until the grid is back) */
     }
+    TIM_LAP(TS_QGRID, tq);
     if (fire) {                                      /* a new step: one a block at most */
         t->seq_abs = nabs;
         idx = SQ_IDX(t, nabs, len);
@@ -3265,6 +3292,16 @@ static void seq_tick(track_t *t, uint32_t adv)
             seq_step(t, s, slen, skip);
         }
     }
+    TIM_LAP(TS_QFIRE, tq);
+#if BOARD_SMK37
+    /* (harmoniser-spec.md §13s: seq_ratchets' own first tests, before the time from the nudge it would ignore: a
+     * skipped step, or a melodic step with no ratchet; the drums' test is per lane, left to it) */
+    if (t->seq_skip ||
+        (!is_drum(t) && (t->step[t->seq_idx % NSTEP].time != ST_NOTE || !t->step[t->seq_idx % NSTEP].rat))) {
+        TIM_LAP(TS_QREST, tq);
+        return;
+    }
+#endif
     /* the ratchets of the step playing, timed from where it fired (its hits ride with its nudge) */
     if (t->seq_abs == abs)
         rel = (int32_t)into - micro_units(t, abs, slen);
@@ -3274,6 +3311,7 @@ static void seq_tick(track_t *t, uint32_t adv)
         rel = (int32_t)into;
     if (t->seq_abs != SEQ_NONE)
         seq_ratchets(t, rel < 0 ? 0u : (uint32_t)rel, slen);
+    TIM_LAP(TS_QREST, tq);
 }
 
 /* MIDI in: the track that has channel ch (0..15) as its own: the drum track's GLO > DRUMS > CH, synth track i's
@@ -3951,14 +3989,23 @@ static void events_block(uint32_t n)
         mi_pen[0] = mi_pen[1] = mi_pen[2] = mi_pen[3] = 0;
     }
     TIM_LAP(TS_EVM, te);
+#ifdef SMK_HARM
+    hm_src = HM_SQ;                                   /* (HARMONY: T1's notes from here on are the sequence's, the arps',
+                                                       * ROLL's: a voice they hold may be taken, harmoniser-spec.md §13n) */
+#endif
     for (i = 0; i < NTRK; i++) {
         seq_tick(&trk[i], adv);
         TIM_LAP(TS_ES1 + i, te);
     }
     click_tick();
     roll_block(adv);
+    TIM_LAP(TS_EVR, te);
     for (i = 0; i < NPART; i++)
         arp_tick(&trk[i], adv);
+#ifdef SMK_HARM
+    hm_src = 0;
+#endif
+    TIM_LAP(TS_EVA, te);
     if (song.playing) {
         song.tick++;
         clk_pos += adv;
@@ -3970,5 +4017,25 @@ static void events_block(uint32_t n)
         arr_elapse(&arrangement_clock, adv, 1u);   /* (units: n x BPM, or the MIDI clock) */
 #endif
     }
-    TIM_LAP(TS_EVA, te);
+    TIM_LAP(TS_EVC, te);
 }
+
+#ifdef SMK_HARM
+/* an interval pad (smk_harm.h hm_block, HARMONY's G1): T1's note as its keys play one (harmoniser-spec.md §13m): the
+ * harmoniser's voice, held as a pad's (§13n: never taken by the keys or the sequence), MIDI out on T1's channel as a
+ * key's, recorded while T1 records */
+static void hm_pad_note(uint32_t note, uint32_t on)
+{
+    track_t *t = &trk[0];
+    uint32_t mc = trk_midi_ch(0);
+    hm_src = HM_SP;
+    if (on) {
+        input_on(t, note, 100u);
+        midi_out_note(mc, note, 100u);
+    } else {
+        input_off(t, note);
+        midi_out_note(mc, note, 0);
+    }
+    hm_src = 0;
+}
+#endif

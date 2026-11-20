@@ -1224,6 +1224,9 @@
         <h2 data-t="vocTitle" data-ic="symbol_audio"></h2>
         <p class="dim" data-t="vocHelp"></p>
         <div class="obset" id="vocset"></div>
+        <h3 data-t="harmSet" id="harmh" hidden></h3>
+        <p class="dim" data-t="harmHelp" id="harmp" hidden></p>
+        <div class="obset" id="harmset"></div>
         <h3 data-t="vocPage"></h3>
         <div class="obset" id="vocpgset"></div>
         <div class="dawmap"><table id="vocch"></table></div>
@@ -1526,7 +1529,9 @@ const parse = {
     o.ntrk = r.i < a.length ? r.b() : 0;             /* v3: tracks (0 = older firmware, one instrument) */
     o.proto = r.i < a.length ? r.b() : 0;            /* v5: the protocol version (0 = older firmware) */
     o.build = r.i < a.length ? r.b() : 0;            /* SMK-37: bit 0 SMK-37 (backup objects 12, 13), bit 1 the vocoder build
-                                                        (14; T3 is VOCODER / AUDIO); an FM-1 or older firmware: 0 */
+                                                        (14; T3 is VOCODER / AUDIO), bit 2 the harmoniser, bit 3 HARMONY on
+                                                        when connected (T1 the harmoniser, the vocoder off); an FM-1 or older
+                                                        firmware: 0 */
     return o;
   },
   [CMD.GET](a) { const r = new Reader(a); return { scope: r.b(), id: r.b(), value: r.v() }; },
@@ -3421,9 +3426,15 @@ function makeMockDevice(opt = {}) {
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
     smkset: Uint8Array.from([0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),   /* project.c smkset_t */
     vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
-      const v = new Uint8Array(480);
+      const v = new Uint8Array(opt.harm ? 532 : 480);   /* (the harmoniser build: 532 bytes since POLY CAP) */
       v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 7, 127, 0, 0, 0, 0, 2, 1, 0], 0);
+      if (opt.harm === "on") v[478] = 1;              /* (?harm=on: HARMONY on) */
       v[476] = 1;                                     /* (mixv: DRY / HF on the 12-step scale) */
+      if (opt.harm) {
+        v.set([100, 100, 100], 483);                  /* the HARMONY page (hset_t at 480): LEVEL V1 .. V3 */
+        v.set([1, 41, 12, 12], 490);                  /* .. KEYS & MIDI, INPUT LEVEL 0 dB, the EQ flat */
+        v[496] = 100, v[504] = 64, v[505] = 100, v[509] = 1;   /* .. DRY LEVEL, T1's MIX, VOICE IN, hhave */
+      }
       v.set([8, 10, 0, 0], 64);
       v.fill(50, 76, 116);
       v.set([2, 1, 1, 0, 1], 146);
@@ -3605,7 +3616,7 @@ function makeMockDevice(opt = {}) {
         ENG.forEach((e) => s(e.name));
         if (!opt.legacy) b(NTRK);
         if (v5) b(mockProto);
-        if (v5 && opt.daw) b(opt.voc ? 3 : 1);   /* SMK-37: the build byte (editor.c ED_BUILD) */   /* v12: LIVE (2.7), v11: your theme (2.7) */   /* v10: SYN kits (v9: FM6 patches, v8: fill conditions, v7: nudges and locks, v6: backup) */
+        if (v5 && opt.daw) b(opt.voc ? 3 | (opt.harm ? 4 | (opt.harm === "on" ? 8 : 0) : 0) : 1);   /* SMK-37: the build byte (editor.c ED_BUILD; ?harm=1 / on: the harmoniser build, HARMONY on) */   /* v12: LIVE (2.7), v11: your theme (2.7) */   /* v10: SYN kits (v9: FM6 patches, v8: fill conditions, v7: nudges and locks, v6: backup) */
         break;
       case CMD.GET: case CMD.SET: {
         if (a.length < 2) return null;
@@ -3864,7 +3875,7 @@ function makeMockDevice(opt = {}) {
             }
             else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
             else if (id >= 12 && id <= 14) {                /* SMK-37 (editor.c: stopped only; 13 taken, not modelled) */
-              if (id !== 13 && P.len !== (id === 12 ? 20 : 480)) throw 0;
+              if (id !== 13 && (id === 12 ? P.len !== 20 : P.len !== 480 && P.len !== 512 && P.len !== 532)) throw 0;   /* (532: POLY CAP) */
               if (st.playing) rc = 3;
               else if (id === 12) st.smkset = P.buf.slice();
               else if (id === 14) st.vocset = P.buf.slice();
@@ -5172,7 +5183,10 @@ const TEXT = {
     tabDaw: "DAW マップ", dawTitle: "DAW モード（SMK-37）",
     tabSmk: "SMK-37", smkTitle: "SMK-37 の設定",
     smkHelp: "HOME メニューの SMK-37 設定（SLOOP の設定とは別）。キーボードへ送ると、すぐに反映して保存します（先に曲を止めてください）。USB LAYOUT か STEM RATE を変えると、数秒後に USB をつなぎ直します。ホイールの校正は本体固有のもので、ここにもバックアップにも含まれません。",
-    tabVoc: "ボコーダー", vocTitle: "ボコーダー（T3）",
+    tabVoc: "ボコーダー", vocTitle: "ボコーダー（T3）", tabVocH: "ボコーダー・ハーモナイザー", vocTitleH: "ボコーダー（T3）とハーモナイザー（T1）",
+    harmSet: "ハーモナイザー", harmHelp: "HOME > HARMONY、負荷の設定（LANE MONO、LANE THIN、LANE RATE、POLY CAP）、HARMONY ページ、フェーダーバンク E / F。POLY CAP は各プロジェクトのスロットにも保存されます。",
+    harmNote: "HARMONY がオンの間、T1 はハーモナイザーです。シンセの音は取っておかれます（HARMONY をオフにすると戻ります）。設定はボコーダー・ハーモナイザータブで。",
+    harmT3Note: "HARMONY がオンの間、ボコーダーはオフです。T3 はオーディオトラック（自分のレーン付き）です。",
     vocHelp: "このビルドの T3 はボコーダー専用のパッチです。VOCODER は USB オーディオ入力の声から内蔵のノコギリ波キャリア（VSM201 の標準）を鳴らし、AUDIO は声をそのまま鳴らします。ここは現在の設定です（各プロジェクトのスロットは自分の設定を持ち、ここでは変わりません）。キーボードへ送ると、すぐに反映して保存します（先に曲を止めてください）。色の付いた名前: 初期値から変更。",
     vocPage: "ボコーダーページ", vocNote: "このビルドの T3 はボコーダーのパッチです（VOCODER: 内蔵ノコギリ波キャリア、AUDIO: 声そのまま）。エンジン、プリセット、プログラムチェンジは使えません。設定はボコーダータブで。",
     obSend: "キーボードへ送る", obRead: "キーボードから読む", obDefault: "初期値", obUnsent: "未送信", obSent: "送信して保存しました",
@@ -5533,7 +5547,10 @@ const TEXT = {
     tabDaw: "DAW map", dawTitle: "DAW mode (SMK-37)",
     tabSmk: "SMK-37", smkTitle: "SMK-37 settings",
     smkHelp: "The HOME menu's SMK-37 settings (kept apart from SLOOP's). Send to the keyboard takes and saves them at once (stop the song first). A changed USB LAYOUT or STEM RATE re-plugs USB a few seconds later. The wheels' calibration is the unit's and is not here or in a backup.",
-    tabVoc: "Vocoder", vocTitle: "Vocoder (T3)",
+    tabVoc: "Vocoder", vocTitle: "Vocoder (T3)", tabVocH: "Vocoder · Harmony", vocTitleH: "Vocoder (T3) and harmoniser (T1)",
+    harmSet: "Harmoniser", harmHelp: "HOME > HARMONY, the load settings (LANE MONO, LANE THIN, LANE RATE, POLY CAP), the HARMONY page and FADER BANK E / F. POLY CAP is also kept with each project slot.",
+    harmNote: "T1 is the harmoniser while HARMONY is on: its synth sound is set aside (HARMONY OFF gives it back). Its settings: the Vocoder · Harmony tab.",
+    harmT3Note: "The vocoder is off while HARMONY is on: T3 is an audio track, with its own lane.",
     vocHelp: "T3 on this build is the vocoder's own patch: VOCODER plays the built-in saw carrier (the VSM201 standard) from your voice on USB audio in, AUDIO plays the voice dry. These are the settings now (each project slot keeps its own and is left as it is here). Send to the keyboard takes and saves them at once (stop the song first). A coloured name: changed from the default.",
     vocPage: "Vocoder page", vocNote: "T3 is the vocoder's patch on this build (VOCODER: the built-in saw carrier; AUDIO: the voice dry): no engine, presets or Program Change. Its settings: the Vocoder tab.",
     obSend: "Send to the keyboard", obRead: "Read from the keyboard", obDefault: "Defaults", obUnsent: "not sent", obSent: "Sent and saved",
@@ -5672,7 +5689,16 @@ function renderPanels() {
     if (b.dataset.tab === "tracks") b.hidden = !tracksOk;
     if (b.dataset.tab === "daw") b.hidden = !(dev && dev.daw);   /* (SMK-37: a device that answers DAW_GET) */
     if (b.dataset.tab === "smk") b.hidden = !(build & 1);        /* (SMK-37: INFO's build byte) */
-    if (b.dataset.tab === "vocoder") b.hidden = !(build & 2);    /* (the vocoder build) */
+    if (b.dataset.tab === "vocoder") {                           /* (the vocoder build; with the harmoniser: both) */
+      b.hidden = !(build & 2);
+      const vt = build & 4 ? "tabVocH" : "tabVoc";
+      if (b.dataset.t !== vt) { b.dataset.t = vt; setLabel(b, t(vt)); }
+    }
+  }
+  {
+    const h2 = document.querySelector('#p-vocoder h2[data-t]'), vt = build & 4 ? "vocTitleH" : "vocTitle";
+    if (h2 && h2.dataset.t !== vt) { h2.dataset.t = vt; setLabel(h2, t(vt)); }
+    document.title = build & 4 ? "SLOOP Editor: Mewcoder + Harmoniser" : build & 2 ? "SLOOP Editor: Mewcoder" : "SLOOP Editor";
   }
   $("stockcard").hidden = !(dev && dev.daw);           /* (SMK-37: the way back to the M-Vave firmware) */
   const ready = !!dev && !!dev.dump;
@@ -6329,7 +6355,7 @@ async function connect() {
   try {
     if (!access) {
       if (MOCK) { mock = makeMockDevice({ auto: false, legacy: QS.get("legacy") === "1", daw: QS.get("smk") === "1",
-        voc: QS.get("smk") === "1" && QS.get("voc") === "1", slotSize: QS.get("smk") === "1" ? 0xA000 : 0, onChange: previewChanged });   /* (smk=1: an SMK-37, 40 KiB user slots) */ access = mock.access; }
+        voc: QS.get("smk") === "1" && QS.get("voc") === "1", harm: QS.get("harm"), slotSize: QS.get("smk") === "1" ? 0xA000 : 0, onChange: previewChanged });   /* (smk=1: an SMK-37, 40 KiB user slots) */ access = mock.access; }
       else {
         try { access = await navigator.requestMIDIAccess({ sysex: true }); }
         catch (e) { sayK("denied"); return; }
@@ -6549,7 +6575,9 @@ function renderTrackbar() {
   for (const b of box.children) {
     const i = +b.dataset.i, x = dev.mix && dev.mix.tracks[i];
     b.setAttribute("aria-pressed", i === (dev.sel || 0) ? "true" : "false");
-    const nm = i === 2 && dev.info.build & 2 ? ["VOCODER", "audio in"]   /* (the vocoder build's T3: its own patch) */
+    const hon = harmOn();                            /* (HARMONY on: T1 the harmoniser, T3 an audio track, no vocoder) */
+    const nm = i === 0 && hon ? ["HARMONY", "harmoniser"] : i === 2 && hon ? ["AUDIO", "audio in"]
+      : i === 2 && dev.info.build & 2 ? ["VOCODER", "audio in"]   /* (the vocoder build's T3: its own patch) */
       : !x ? [i === ntrk - 1 ? "DRUMS" : "", ""] : x.engine >= dev.info.nengines ? [(dev.kitNames || [])[x.e0 - (dev.kitMin || 0)] || "", "drums"]
       : [(dev.names[x.engine] || [])[x.preset] || "", String(dev.info.engines[x.engine] || "").toLowerCase()];
     b.lastChild.replaceChildren(nm[0] + " ", el("span", { class: "dim", text: nm[1] }));
@@ -6557,6 +6585,12 @@ function renderTrackbar() {
   }
   document.documentElement.style.setProperty("--trk", TCOL[(dev.sel || 0) % 4]);
   renderPreview();
+}
+/* HARMONY on: the settings read (Vocoder tab), else what INFO said when connected (build bit 3) */
+function harmOn() {
+  if (!dev || !dev.info || !(dev.info.build & 4)) return false;
+  const d = OB.vocoder.dev === dev && OB.vocoder.d;
+  return d && d.length >= 480 ? !!(d[478] & 1) : !!(dev.info.build & 8);
 }
 function selectTrack(i) {
   if (!dev || !hasTracks() || i === dev.sel) return;
@@ -6584,7 +6618,8 @@ function updateBrowser() {
   const e = dev.dump.engine;
   const sel = $("engine");
   const drum = e >= dev.info.nengines;              /* the drum track: no engine, no presets */
-  const voc = !drum && !!(dev.info.build & 2) && dev.sel === 2;   /* the vocoder build's T3: VOCODER (the built-in saw
+  const harm = !drum && harmOn() && dev.sel === 0;   /* HARMONY on: T1 is the harmoniser, its synth set aside */
+  const voc = !drum && !!(dev.info.build & 2) && dev.sel === 2 || harm;   /* the vocoder build's T3: VOCODER (the built-in saw
                                                        carrier, the VSM201 standard) or AUDIO; the firmware takes no engine,
                                                        preset or Program Change there (ui.c) */
   renderTrackbar();
@@ -6594,6 +6629,7 @@ function updateBrowser() {
   $("factlib").disabled = drum || voc;
   $("drumnote").hidden = !drum;
   $("vocnote").hidden = !voc;
+  $("vocnote").textContent = t(harm ? "harmNote" : harmOn() && dev.sel === 2 ? "harmT3Note" : "vocNote");
   $("browser").hidden = drum;
   $("groups").hidden = drum;
   $("ctlhelp").hidden = drum;
@@ -7840,12 +7876,17 @@ $("dawfile").addEventListener("change", async (e) => {
   sayK("dawOpened");
 });
 
-/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 480
-   bytes), read with BK_LIST / BK_GET and written back whole with BK_PUT (the firmware checks them as at power-on, takes
+/* SMK-37: its settings (backup object 12, project.c smkset_t, 20 bytes) and the vocoder build's (14, vocset_t, 532
+   bytes since Build 1.7's POLY CAP; 512 before it, 480 before the HARMONY page, whose fields then do not show), read with BK_LIST / BK_GET and written back whole with BK_PUT (the firmware checks them as at power-on, takes
    them and saves). A field: [key, byte offset, label, options [[value, name]], default] */
 const OB_DB = (a, b, st, z) => Array.from({ length: (b - a) / st + 1 }, (_, i) => [i, `${a + i * st > 0 ? "+" : ""}${a + i * st}${z}`]);
 const OB_BEND = [0, 1, 2, 3, 4, 5, 7, 12].map((x) => [x, `${x} ST`]);
 const OB_MIX = ["OFF", ...Array.from({ length: 11 }, (_, i) => `${-30 + 3 * i} DB`)];   /* DRY, HF: OFF, -30 .. 0 dB */
+const OB_PCT = Array.from({ length: 128 }, (_, i) => [i, `${Math.round(i * 100 / 127)} %`]);   /* a fader's 0 .. 127 */
+const OB_PIT = Array.from({ length: 128 }, (_, k) => {   /* PITCH: -64 .. 63 as a signed byte, in semitones (ui_fbank.c) */
+  const f = k - 64, t10 = Math.trunc(f < 0 ? f * 240 / 64 : f * 120 / 63);
+  return [f & 255, `${t10 > 0 ? "+" : t10 < 0 ? "-" : ""}${(Math.abs(t10) / 10).toFixed(1)} ST`];
+});
 const OB_TRIM = Array.from({ length: 25 }, (_, i) => [(i - 18) & 255, `${i > 18 ? "+" : ""}${i - 18} DB`]);   /* signed bytes */
 const OB = {
   smk: { id: 12, len: 20, magic: 0x54534B53, box: "smkset", dev: null, d: null, dirty: false, fields: [
@@ -7861,11 +7902,11 @@ const OB = {
     ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0],
     ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0],
     ["saws", 19, "CARRIER SAWS (VOCODER)", ["AUTO", "1 SAW", "2 SAWS"], 0]] },
-  vocoder: { id: 14, len: 480, magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
+  vocoder: { id: 14, len: 532, lens: [480, 512, 532], magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
     ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
     ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
-    ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
-    ["vinr", 71, "IN R", ["TRACK 3", "CARRIER", "T1", "T2", "OFF"], 0],
+    ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF", "HARMONY"], 0],
+    ["vinr", 71, "IN R", ["TRACK 3", "CARRIER", "T1", "T2", "OFF", "HARMONY"], 0],
     ["trl", 474, "TRIM L", OB_TRIM, 0], ["trr", 475, "TRIM R", OB_TRIM, 0],
     ["mode", 4, "T3", ["AUDIO", "VOCODER"], 0],
     ["lvl", 5, "LEVEL", OB_DB(-12, 18, 3, " DB"), 4],
@@ -7883,13 +7924,40 @@ const OB = {
     ["blend", 66, "BLEND", ["SUM", "FILL"], 0],
     ["eatt", 472, "ATTACK", ["3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"], 0],
     ["erel", 473, "RELEASE", ["8 MS", "15 MS", "25 MS", "40 MS", "60 MS", "100 MS"], 0],
-    ["brmode", 477, "BRIDGE MODE", ["FIXED", "FOLLOW"], 0]],
+    ["brmode", 477, "BRIDGE MODE", ["FIXED", "FOLLOW"], 0],
+    ["spair", 511, "STEREO PAIR (USB, SYNTHS+RET)", ["RET", "DRUMS", "T1", "T2", "T3"], 0]],
+  harm: [                                              /* the harmoniser (HOME > HARMONY, the load settings, the HARMONY
+                                                          page, FADER BANK E / F: smk_harm.h, project.c vocset_t) */
+    ["hon", 478, "HARMONY", ["OFF", "ON: T1"], 0],
+    ["hint", 478, "INTERVALS", ["FIXED", "SCALE"], 0],
+    ["lmono", 479, "LANE MONO", ["WITH STEMS", "OFF"], 0],
+    ["lt0", 478, "LANE THIN: VOICE", ["OFF", "ON"], 1], ["lt1", 478, "LANE THIN: T2", ["OFF", "ON"], 1],
+    ["lt2", 478, "LANE THIN: T3", ["OFF", "ON"], 1], ["lt3", 478, "LANE THIN: DRUMS", ["OFF", "ON"], 0],
+    ["lr0", 479, "LANE RATE: VOICE", ["44.1K", "22K"], 0], ["lr1", 479, "LANE RATE: T2", ["44.1K", "22K"], 0],
+    ["lr2", 479, "LANE RATE: T3", ["44.1K", "22K"], 0], ["lr3", 479, "LANE RATE: DRUMS", ["44.1K", "22K"], 0],
+    ["pc0", 512, "POLY CAP: T1", ["OFF", "1", "2", "3", "4", "5"], 0], ["pc1", 513, "POLY CAP: T2", ["OFF", "1", "2", "3", "4", "5"], 0],
+    ["pc2", 514, "POLY CAP: T3", ["OFF", "1", "2", "3", "4", "5"], 0],
+    ["hpit", 502, "PITCH (BANK E)", OB_PIT, 0], ["hfb", 503, "FEEDBACK (BANK E)", OB_PCT, 0],
+    ["hvin", 505, "VOICE IN (BANK E)", OB_PCT, 100],
+    ["hwd", 504, "T1 MIX (BANK F)", OB_PCT, 64], ["hs1", 506, "T2 MIX (BANK F)", OB_PCT, 0],
+    ["hs2", 507, "T3 MIX (BANK F)", OB_PCT, 0], ["hs3", 508, "DRUM MIX (BANK F)", OB_PCT, 0],
+    ["hctl", 490, "CONTROL", [[1, "KEYS & MIDI"], [2, "MANUAL"], [3, "BOTH"]], 1],
+    ["hinl", 491, "INPUT LEVEL", [[0, "OFF"], ...OB_DB(-40, 12, 1, " DB").map(([i, n]) => [i + 1, n])], 41],
+    ["hlow", 492, "FB LOW EQ", OB_DB(-12, 18, 1, " DB"), 12],
+    ["hhigh", 493, "FB HIGH EQ", OB_DB(-12, 4, 1, " DB"), 12],
+    ["hfbl", 494, "FB LIMIT", ["SAFE", "H949"], 0],
+    ["hspread", 510, "SPREAD", Array.from({ length: 101 }, (_, i) => [i, String(i)]), 0]],
   page: [["byp", 146, "BYPASS", ["OFF", "REPLACEMENT", "SPEECH"], 2], ["brsel", 147, "BRIDGING", ["OFF", "SUM", "INDIVIDUAL"], 1],
     ["addsel", 148, "ADDITION", ["OFF", "SUM", "INDIVIDUAL"], 1], ["actl", 149, "AUTOCONTROL", ["OFF", "ON"], 0],
     ["nzc", 151, "NOISE BLEND", Array.from({ length: 21 }, (_, i) => [100 - i * 5, `${i * 5} %`]).reverse(), 0]] },
 };
 const OB_PG = 72;                                     /* vocset_t pcur: mute (4), emph[20], add[20], brg[10], fn[20], byp .. */
 const OB_BITS = { vsetup: [0, 3], vinl: [2, 7], vinr: [5, 7],     /* vocset rsv[1] (byte 71): SETUP, IN L, IN R */
+                  hon: [0, 1], hint: [1, 1],                       /* vocset harm (byte 478): HARMONY, INTERVALS */
+                  lt0: [2, 1, 1], lt1: [3, 1, 1], lt2: [4, 1, 1], lt3: [5, 1],   /* .. LANE THIN (kept as the change from
+                                                                      ON, ON, ON, OFF: the third value) */
+                  lr0: [0, 1], lr1: [1, 1], lr2: [2, 1], lr3: [3, 1], lmono: [4, 1],   /* vocset rsv3 (479): LANE RATE,
+                                                                      LANE MONO (1 OFF) */
                   gdel: [0, 15], saws: [4, 3] };                  /* smkset spare (byte 19): GATE DELAY, CARRIER's saws */
 const obOpts = (f) => f[3].map((x, i) => (Array.isArray(x) ? x : [i, x]));
 const obResp = (d) => (d[68] & 1 ? (d[69] & 1 ? 2 : 1) : 0);
@@ -7901,28 +7969,30 @@ function obGet(k, f) {
   const d = OB[k].d;
   if (f[0] === "resp") return obResp(d);
   if (f[0] === "bup" || f[0] === "bdn") return obBendGet(d, f);
-  if (OB_BITS[f[0]]) { const [sh, m] = OB_BITS[f[0]]; return Math.min((d[f[1]] >> sh) & m, obOpts(f).length - 1); }
+  if (OB_BITS[f[0]]) { const [sh, m, x = 0] = OB_BITS[f[0]]; return Math.min(((d[f[1]] >> sh) & m) ^ x, obOpts(f).length - 1); }
   return d[f[1]];
 }
 function obSet(k, f, v) {
   const d = OB[k].d;
   if (f[0] === "resp") { d[68] = v ? 1 : 0; d[69] = v === 2 ? 1 : 0; }
-  else if (OB_BITS[f[0]]) { const [sh, m] = OB_BITS[f[0]]; d[f[1]] = (d[f[1]] & ~(m << sh)) | ((v & m) << sh); }
+  else if (OB_BITS[f[0]]) { const [sh, m, x = 0] = OB_BITS[f[0]]; d[f[1]] = (d[f[1]] & ~(m << sh)) | (((v ^ x) & m) << sh); }
   else if (f[0] === "bup" || f[0] === "bdn") {
     const up = f[0] === "bup" ? v : obBendGet(d, OB.smk.fields[2]), dn = f[0] === "bdn" ? v : obBendGet(d, OB.smk.fields[3]);
     d[6] = up === 7 ? 0 : up || 0x80;
     d[7] = dn === up ? 0 : dn || 0x80;
   } else d[f[1]] = v;
   if (k === "vocoder" && f[1] >= 4 && f[1] < 16) d[14] = 1;   /* (cur.have: the settings taken) */
-  if (k === "vocoder" && f[1] >= OB_PG) d[OB_PG + 78] = 1;    /* (pcur.have) */
+  if (k === "vocoder" && f[1] >= OB_PG && f[1] < 472) d[OB_PG + 78] = 1;    /* (pcur.have) */
+  if (k === "vocoder" && f[1] >= 480 && f[1] < 512) d[509] = 1;   /* (hhave: the HARMONY page taken) */
   OB[k].dirty = true;
   obRender(k);
 }
 function obDefaults(k) {
   const o = OB[k], d = o.d;
-  for (const f of o.fields) obSet(k, f, f[4] < 0 ? obGet(k, o.fields[2]) : f[4]);
+  for (const f of o.fields) if (f[1] < d.length) obSet(k, f, f[4] < 0 ? obGet(k, o.fields[2]) : f[4]);
   if (k === "vocoder") {
     for (const f of o.page) obSet(k, f, f[4]);
+    for (const f of o.harm) if (f[1] < d.length) obSet(k, f, f[4]);
     d.fill(0, OB_PG, OB_PG + 4);                      /* nothing muted */
     d.fill(50, OB_PG + 4, OB_PG + 44);                /* EMPHASIS, ADDITION at their middle */
     d.fill(0, OB_PG + 44, OB_PG + 74);                /* bridging 0, every knob on EMPHASIS */
@@ -7936,7 +8006,7 @@ async function obRead(k) {
   const it = L.items.find((x) => x.id === o.id);
   const d = it ? await bkReadObj(rq, it) : null;
   const dv = d ? new DataView(d.buffer, d.byteOffset, d.length) : null;
-  o.d = d && d.length === o.len && dv.getUint32(0, true) === o.magic ? new Uint8Array(d) : null;
+  o.d = d && (o.lens || [o.len]).includes(d.length) && dv.getUint32(0, true) === o.magic ? new Uint8Array(d) : null;
   o.dirty = false;
   obRender(k);
 }
@@ -7944,14 +8014,21 @@ function obRender(k) {
   const o = OB[k], box = $(o.box);
   if (!box) return;
   $(k === "smk" ? "smkstate" : "vocstate").textContent = !o.d ? t("none") : o.dirty ? t("obUnsent") : "";
-  if (!o.d) { box.replaceChildren(); if (k === "vocoder") { $("vocpgset").replaceChildren(); $("vocch").replaceChildren(); } return; }
+  if (!o.d) { box.replaceChildren(); if (k === "vocoder") { $("vocpgset").replaceChildren(); $("vocch").replaceChildren(); $("harmset").replaceChildren(); } return; }
   const one = (f) => {
     const v = obGet(k, f), def = f[4] < 0 ? obGet(k, o.fields[2]) : f[4];
     return el("label", { class: v === def ? "" : "chg" }, el("span", { class: "dim", text: f[2] + " " }),
       dawSel("", obOpts(f), v, (x) => obSet(k, f, x)));
   };
-  box.replaceChildren(...o.fields.map(one));
+  box.replaceChildren(...o.fields.filter((f) => f[1] < o.d.length).map(one));   /* (older firmware: no HARMONY page) */
   if (k !== "vocoder") return;
+  {   /* the harmoniser's settings (a harmoniser build: the object of 480 bytes and over) */
+    const hb = !!(o.dev && o.dev.info && o.dev.info.build & 4);   /* (INFO: a harmoniser build; or an object past 480) */
+    const hf = o.harm.filter((f) => f[1] < o.d.length), on = o.d.length >= 480 && (hb || o.d.length > 480);
+    $("harmset").replaceChildren(...(on ? hf.map(one) : []));
+    $("harmh").hidden = $("harmp").hidden = !on;
+    renderTrackbar();                                  /* (HARMONY read: T1 / T3's names) */
+  }
   const d = o.d, P = OB_PG;
   $("vocpgset").replaceChildren(...o.page.map(one));
   const mute = new DataView(d.buffer, d.byteOffset + P, 4).getUint32(0, true);

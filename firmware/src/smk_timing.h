@@ -42,6 +42,16 @@ enum {
     TS_P1, TS_P2, TS_P3,  /* (the UI build, 2026-11-02) the chain's first part, tracks 1..3 (fx.c mix_part_run, heard): DIST,
                            * INSERT, SLICER, FILTER */
     TS_M1, TS_M2, TS_M3,  /* .. its loop: LEVEL, the mute / duck, STEM FX (tp_x), the stem, the sends, PAN */
+    TS_HARM,     /* (2026-11-07) the harmoniser's probe (smk_harm.h hp_block, core 0, inside pre_in) */
+    TS_TRK,      /* (2026-11-10) .. its tracker (hp_lags, inside harm) */
+    TS_LV, TS_L2, TS_L3, TS_LD,   /* (2026-11-14, harmoniser-spec.md §12) the lanes (hm_lane, either core): VOICE, T2,
+                                   * T3, DRUMS; inside their units (VOICE's includes trk) */
+    TS_DKIT,     /* (2026-11-15, Build 1.2) inside the drums' unit: the kit (mix_drums: the voices, groups, rings, pan) */
+    TS_DPRE,     /* .. its lane's input (the snapshot, hm_in) */
+    TS_DPOST,    /* .. its lane's output (the blend, DRUMS's level, the sends, the stems) */
+    TS_QGRID, TS_QFIRE, TS_QREST,   /* (Build 1.3) inside the sequencer (seq_tick, every track summed): the grid; a new
+                                     * step; the ratchets and the rest */
+    TS_EVR, TS_EVC,  /* (Build 1.4, §13s) ev_arp split: the metronome and ROLL; the clock (the arps alone stay in ev_arp) */
     TS_N
 };
 static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wait", "pre_go", "ana", "units",
@@ -49,7 +59,9 @@ static const char *const TS_NAME[TS_N] = {"pre_ev", "pre_in", "pre_tp", "tail_wa
                                           "ev_midi", "ev_s1", "ev_s2", "ev_s3", "ev_sd", "ev_arp", "u1", "u2", "u3", "ud",
                                           "c1",
                                           "c1_u1", "c1_u2", "c1_u3", "c1_ud", "c1_stem", "voc", "rest", "t5", "all",
-                                          "eng1", "eng2", "eng3", "pre1", "pre2", "pre3", "mix1", "mix2", "mix3"};
+                                          "eng1", "eng2", "eng3", "pre1", "pre2", "pre3", "mix1", "mix2", "mix3", "harm", "trk",
+                                          "ln_v", "ln_t2", "ln_t3", "ln_d", "d_kit", "d_pre", "d_post", "q_grid", "q_fire", "q_rest",
+                                          "ev_roll", "ev_clk"};
 static struct {
     uint32_t t, ut[2];                                  /* the section's start; the unit's, each core */
     uint32_t cur[TS_N];                                 /* this half's */

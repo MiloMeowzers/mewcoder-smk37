@@ -6,6 +6,10 @@
  * engine at a time: on a switch the old engine fades out, its voices end, then the new one starts, voice.c
  * engine_block). The first engine to ask for it after another one gets it cleared, as at power-on. */
 static void *eng_arena_of(const track_t *t, uint32_t eng);
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+static inline __attribute__((always_inline)) void *eng_arena_peek(const track_t *t, uint32_t eng);   /* (FM6's render in
+                                                    * RAM, eng_fm6.c: the arena if it is eng's, never claimed) */
+#endif
 static inline int32_t voice_amp(int32_t s, const vmod_t *m, uint32_t i) { return mulq15(mulq15(s, amp_at(m, i)), VOICE_FS); }
 static inline int32_t soft_knee(int32_t y, int32_t k)   /* linear up to k, then only the peaks saturate */
 {
@@ -55,6 +59,13 @@ static eng_arena_t eng_arena[NPART] __attribute__((section(".pool")));
 static uint8_t eng_arena_own[NPART];            /* the engine + 1 whose state is in it, 0 = none */
 #ifdef ARENA_STATS
 static uint32_t eng_arena_claims, eng_arena_bad;   /* host tests: claims, accesses by an engine the part does not play */
+#endif
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+static inline __attribute__((always_inline)) void *eng_arena_peek(const track_t *t, uint32_t eng)
+{
+    uint32_t p = (uint32_t)(t - trk);
+    return p < NPART && eng_arena_own[p] == eng + 1u ? &eng_arena[p] : 0;
+}
 #endif
 static void *eng_arena_of(const track_t *t, uint32_t eng)
 {

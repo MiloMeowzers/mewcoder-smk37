@@ -1,0 +1,769 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* SMK-37, the vocoder build: the HARMONY page (the harmoniser's, Stage 1b: smk37-devtools harmoniser-spec.md §9;
+ * HARMONISER.md). In the visualiser's place as the vocoder page (ui_vpage.c, included from it: vis_pg 1): PATCH on the
+ * vocoder page goes on to it while HARMONY is on, PATCH on it to PUNCH IN. < > (and SELECT) step the groups:
+ *   G1 INTERVALS  pads: the HK940's 16 intervals (top up, bottom down), held momentary / tapped latched, played as T1's
+ *                 notes (smk_harm.h hm_pad); K1-K3 MICRO V1-V3, K4-K6 LEVEL V1-V3, K8 WET / DRY
+ *   G2 PANEL      pads (the H949's switch row): FUNCTION SELECT, F1-F4 (IN: NORM, EXTEND, SHARP, FLAT), VOICE, MANUAL,
+ *                 KEYS & MIDI (both together: K+M); MAIN 6.25 .. 200 ms (Stage 2), IN / OUT, REPEAT; K1 INPUT LEVEL,
+ *                 K3 FB MAIN, K5 LOW EQ, K6 HIGH EQ, K8 WET / DRY
+ *   G3 OUTPUTS    pads: DRY, V1, V2, V3 (on / off), DLY, SPLIT, ALGORITHM (Stage 2), FB LIMIT SAFE / H949; DELAY ONLY
+ *                 (Stage 2), REPEAT; K1 DRY LEVEL, K8 WET / DRY
+ * The pads carrying a signal are its meter (8 steps of 6 dB, orange from -6 dBFS, red from -1 held ~1 s). The screen:
+ * the H949's PITCH RATIO readout (four red seven-segment digits: the readout voice's ratio), its tag, the control
+ * method, the sung note, REP; the function lights; the three voices (interval, MICRO, LEVEL, meter); the input lights,
+ * FB, FB LIMIT, the EQ, WET / DRY, IN / OUT; the group's knobs. Everything drawn comes from one view (hp_view), and the
+ * page is drawn again only when that view changes (the 1a lesson: a redraw signature built from what is drawn). Stage 2's
+ * switches are drawn dim and say so when pressed. FADER BANK E's FEEDBACK and F's T1 MIX are the same values as K3 / K8:
+ * a knob turn leaves that fader waiting to pick up. */
+#ifndef SMK_HARM
+#error "ui_hpage.c: the harmoniser (smk_harm.h)"
+#endif
+#define HP_LONG_MS 400u                             /* REPEAT's pad held longer: momentary (as NOTE REPEAT) */
+#define HP_DEBOUNCE_MS 150u                         /* a second hit on the same pad within this: ignored (a drum pad's
+                                                     * firm strike can register twice; the second toggled the latch
+                                                     * back off, 2026-11-13) */
+#define HP_IV_LONG_MS 600u                          /* an interval pad held longer: momentary (a slow tap latched at
+                                                     * 400 ms let go, 2026-11-13: as the vocoder page's pads, 600) */
+#define HP_PAD_ON 70u                               /* (a pad that is on: at least this bright, of 255) */
+#define HP_RV_FR 90u                                /* (frames, ~3 s: the knob's voice on the readout) */
+static const char *const HP_GN[3] = {"G1 INTERVALS", "G2 PANEL", "G3 OUTPUTS"};
+static const uint8_t HP_VRGB[3][3] = {{255, 150, 30}, {40, 190, 255}, {180, 100, 255}};   /* V1 orange, V2 cyan, V3 violet */
+#define HP_VCOL(v) ((v) == 0u ? RGB(255, 150, 30) : (v) == 1u ? RGB(40, 190, 255) : RGB(180, 100, 255))
+#define HP_SEG_ON RGB(255, 40, 30)
+#define HP_SEG_OFF RGB(46, 8, 8)
+static struct {
+    uint16_t inpk;                                  /* the input's raw peak, held (the IN lamps' real thresholds) */
+    uint8_t inpk_t;                                 /* .. its hold, frames */
+    uint8_t grp, msg_t, rv, rv_t, red_t[6];         /* the group; the header's message frames; the knob's voice, its
+                                                     * frames; each meter's red hold */
+    uint8_t mk[6], mkt[6];                          /* the meters (HM_UP_*): their steps, held, and the hold's frames */
+    uint32_t hit[16];                               /* each pad's last hit (ms): HP_DEBOUNCE_MS */
+    uint32_t s2_until;                              /* a Stage 2 pad pressed: it flashes amber until then (ms) */
+    uint8_t s2_p;                                   /* .. which */
+    uint16_t pend;                                  /* the pads down whose release counts (momentary, REPEAT) */
+    uint32_t t0[16];
+    char msg[24];
+} hp;
+/* everything the page draws (the signature is its hash) */
+typedef struct {
+    char head[24];
+    uint16_t ratio;
+    uint8_t grp, rv, rv_on, ctl, note, scale, rep, fn, fsel, vsel, byp, fbl, low, high, inl, fb, wd, dry, dmute, lamps,
+        clip, h949_red;
+    uint8_t on[3], fnv[3], lv[3], mute[3], mk[3], red[3];
+    int8_t iv[3], mic[3], pan[3];                   /* (pan: as heard, SPREAD in; Stage 1c) */
+    uint8_t spread;
+    int8_t psel;                                    /* (K6: the VOICE-selected voice's own pan) */
+    int8_t pit;                                     /* PITCH (K7 on every group, = bank E's F1) */
+} hp_view_t;
+
+static void hp_say(const char *a, const char *b)    /* the header, a second and a half */
+{
+    str_cpy(hp.msg, a, sizeof hp.msg);
+    if (b[0]) {
+        str_cpy(hp.msg + str_len(hp.msg), " ", sizeof hp.msg - str_len(hp.msg));
+        str_cpy(hp.msg + str_len(hp.msg), b, sizeof hp.msg - str_len(hp.msg));
+    }
+    hp.msg_t = 45;
+}
+static void hp_db(char *b, uint32_t pct)            /* a linear 0 .. 100 % level as dB, "-6.0 DB", "OFF" */
+{
+    int32_t t;
+    if (!pct) {
+        str_cpy(b, "OFF", 4);
+        return;
+    }
+    t = (VP_DB[pct > 100u ? 100u : pct] - 120) / 2;  /* (VP_DB: 400 log10(p / 50); 20 log10(p / 100) in tenths) */
+    b[0] = t < 0 ? '-' : '+';
+    fmt_fixz(b + 1, (uint32_t)(t < 0 ? -t : t), 1);
+    str_cpy(b + str_len(b), " DB", 4);
+}
+static void hp_sdb(char *b, int32_t d)              /* signed whole dB, "+3 DB" */
+{
+    b[0] = d < 0 ? '-' : '+';
+    fmt_int(b + 1, d < 0 ? -d : d);
+    str_cpy(b + str_len(b), " DB", 4);
+}
+static void hp_pct(char *b, uint32_t v127)          /* 0 .. 127 as %, 64: 50 %, 127: 100 % (as the FADER BANK screen) */
+{
+    fmt_int(b, (int32_t)((v127 * 100u + 63u) / 127u));
+    str_cpy(b + str_len(b), " %", 3);
+}
+static void hp_pitch(char *b, int32_t f)            /* PITCH -64 .. 63 in semitones, "+3.5" (smk_harm.h hm_ratios) */
+{
+    int32_t t10 = f < 0 ? -((-f * 240) / 64) : f * 120 / 63;
+    b[0] = t10 > 0 ? '+' : t10 < 0 ? '-' : ' ';
+    fmt_fixz(b + 1, (uint32_t)(t10 < 0 ? -t10 : t10), 1);
+}
+static void hp_panname(char *b, int32_t p)          /* a pan, "L20", "C", "R40" (-64 .. 63 as the PAN's 0 .. 64) */
+{
+    if (!p) {
+        str_cpy(b, "C", 2);
+        return;
+    }
+    b[0] = p < 0 ? 'L' : 'R';
+    fmt_int(b + 1, p < 0 ? -p : p);
+}
+static void hp_unpick(uint32_t bank, uint32_t col)  /* a knob set a FADER BANK value: its fader waits to pick up */
+{
+    if (smk_fbank % FB_N == bank)
+        smk_flive &= (uint8_t)~(1u << col);
+}
+static uint32_t hp_vmask(void) { return hs.vsel ? 1u << ((hs.vsel - 1u) % 3u) : 7u; }   /* the VOICE-selected */
+static void hp_vname(char *b, uint32_t v) { b[0] = 'V', b[1] = (char)('1' + v), b[2] = 0; }
+static void hp_ctlname(char *b)
+{
+    uint32_t c = hs.ctl & 3u;
+    str_cpy(b, c == 3u ? "K+M" : c == HC_MAN ? "MAN" : "KEYS", 5);
+}
+
+/* ---- the knobs ---- */
+static void hp_turn(uint32_t k, int32_t s)
+{
+    uint32_t g = hp.grp % 3u;
+    int32_t f = s > 1 || s < -1 ? 3 : 1, n;
+    char a[12], b[16];
+    if (k == 6u) {                                      /* K7, every group: PITCH (= bank E's F1; the owner, 2026-11-13:
+                                                         * "allocate 1 knob that controls pitch"), a stop at 0 */
+        int32_t o = hm_pitch;
+        n = clamp(o + s * f, -64, 63);
+        if ((o < 0 && n > 0) || (o > 0 && n < 0))
+            n = 0;
+        hm_pitch = (int16_t)n;
+        hp_unpick(4u, 0u);
+        hp_pitch(b, n);
+        str_cpy(b + str_len(b), " ST", 4);
+        hp_say("PITCH", b[0] == ' ' ? b + 1 : b);
+        return;
+    }
+    if (k == 7u) {                                      /* K8, every group: T1's MIX (= bank F's T1 column, §13p;
+                                                         * was bank E's F4, now LANE RATE: §13x) */
+        hm_wd = (int16_t)clamp(hm_wd + s * f, 0, 127);
+        hp_unpick(5u, 0u);
+        hp_pct(b, (uint32_t)hm_wd);
+        hp_say("T1 MIX", b);
+        return;
+    }
+    if (g == 0u && k < 3u) {                            /* MICRO V1 .. V3 (a detent at 0) */
+        int32_t o = hs.mic[k];
+        n = clamp(o + s * f, -100, 100);
+        if ((o < 0 && n > 0) || (o > 0 && n < 0))
+            n = 0;
+        hs.mic[k] = (int8_t)n;
+        hp.rv = (uint8_t)k, hp.rv_t = HP_RV_FR;
+        hp_vname(a, k);
+        str_cpy(a + 2, " MICRO", 8);
+        if (hs.fn[k] == HF_SHARP || hs.fn[k] == HF_FLAT) {
+            fmt_fixz(b, hm_ratio1000(k), 3);           /* (SHARP / FLAT: the ratio it makes; 0.930) */
+        } else {
+            b[0] = n < 0 ? '-' : '+';
+            fmt_int(b + 1, n < 0 ? -n : n);
+            str_cpy(b + str_len(b), " C", 3);
+        }
+        hp_say(a, b);
+    } else if ((g == 0u && k >= 3u && k < 6u) || (g == 2u && k >= 1u && k < 4u)) {   /* LEVEL V1 .. V3: G1 K4-K6, and
+                                                         * G3 K2-K4 (the outputs' group: the same values, 2026-11-13) */
+        uint32_t v = g == 0u ? k - 3u : k - 1u;
+        hs.lv[v] = (uint8_t)clamp((int32_t)hs.lv[v] + s * 2 * f, 0, 100);
+        hp.rv = (uint8_t)v, hp.rv_t = HP_RV_FR;
+        hp_vname(a, v);
+        str_cpy(a + 2, " LEVEL", 8);
+        hp_db(b, hs.lv[v]);
+        hp_say(a, b);
+    } else if (g == 1u && k == 0u) {                    /* INPUT LEVEL */
+        hs.inl = (uint8_t)clamp((int32_t)hs.inl + s * f, 0, (int32_t)HM_INL_N - 1);
+        if (hs.inl)
+            hp_sdb(b, (int32_t)hs.inl - (int32_t)HM_INL_0);
+        else
+            str_cpy(b, "OFF", 4);
+        hp_say("INPUT", b);
+    } else if (g == 1u && k == 2u) {                    /* FB MAIN (= bank E's F2) */
+        hm_fb = (int16_t)clamp(hm_fb + s * f, 0, 127);
+        hp_unpick(4u, 1u);
+        hp_pct(b, (uint32_t)hm_fb);
+        hp_say("FEEDBACK", b);
+    } else if (g == 1u && (k == 4u || k == 5u)) {       /* the feedback's LOW / HIGH EQ */
+        uint8_t *e = k == 4u ? &hs.low : &hs.high;
+        uint32_t nn = k == 4u ? HM_LOW_N : HM_HIGH_N, z = k == 4u ? HM_LOW_0 : HM_HIGH_0;
+        *e = (uint8_t)clamp((int32_t)*e + s, 0, (int32_t)nn - 1);
+        hp_sdb(b, (int32_t)*e - (int32_t)z);
+        hp_say(k == 4u ? "LOW EQ" : "HIGH EQ", b);
+    } else if (g == 2u && k == 4u) {                    /* SPREAD: V1 to the left, V3 to the right (Stage 1c, §10b) */
+        hm_spread = (uint8_t)clamp((int32_t)hm_spread + s * 2 * f, 0, 100);
+        fmt_int(b, hm_spread);
+        hp_say("SPREAD", b);
+    } else if (g == 2u && k == 5u) {                    /* PAN of the VOICE-selected voice (ALL: the three together) */
+        uint32_t m = hp_vmask(), v;
+        for (v = 0; v < 3u; v++)
+            if ((m >> v) & 1u)
+                hs.pan[v] = (int8_t)clamp(hs.pan[v] + s * f, -64, 63);
+        v = m == 7u ? 0u : (uint32_t)__builtin_ctz(m);
+        str_cpy(a, "PAN ", 5);
+        if (m == 7u)
+            str_cpy(a + 4, "ALL", 4);
+        else
+            hp_vname(a + 4, v);
+        hp_panname(b, hs.pan[v]);
+        hp_say(a, b);
+    } else if (g == 2u && k == 0u) {                    /* DRY LEVEL */
+        hs.dry = (uint8_t)clamp((int32_t)hs.dry + s * 2 * f, 0, 100);
+        hp_db(b, hs.dry);
+        hp_say("DRY", b);
+    } else {
+        hp_say("STAGE 2", "");                          /* (RATE, FB DLY ONLY, DLY ONLY LEVEL, the pans) */
+    }
+}
+
+/* ---- the pads (reading order: 0 .. 7 the top row) ---- */
+/* a Stage 2 pad pressed: the header says so, the pad flashes amber (it does nothing yet; the owner, 2026-11-13: "a pad
+ * that doesn't seem to do anything is confusing") */
+static void hp_s2(uint32_t p, const char *name)
+{
+    str_cpy(hp.msg, name, sizeof hp.msg);              /* ("EXTEND: STAGE 2") */
+    str_cpy(hp.msg + str_len(hp.msg), ": STAGE 2", sizeof hp.msg - str_len(hp.msg));
+    hp.msg_t = 45;
+    hp.s2_p = (uint8_t)p, hp.s2_until = fm1_ms + 300u;
+}
+static void hp_rep_press(uint32_t p)                /* REPEAT, as NOTE REPEAT: a tap latches, held it springs back */
+{
+    hm.rep = (uint8_t)!hm.rep;
+    hm_rep_pad = 1;
+    hp.pend |= (uint16_t)(1u << p), hp.t0[p] = fm1_ms;
+    hp_say("REPEAT", hm.rep ? "ON" : "OFF");
+}
+static void hp_voice_step(void)                     /* VOICE: ALL -> V1 -> V2 -> V3 (G2's top pad 6, G3's bottom pad 7) */
+{
+    char a[8];
+    hs.vsel = (uint8_t)((hs.vsel + 1u) & 3u);
+    if (hs.vsel) {
+        hp_vname(a, hs.vsel - 1u);
+        hp.rv = (uint8_t)(hs.vsel - 1u), hp.rv_t = HP_RV_FR;
+    } else {
+        str_cpy(a, "ALL", 4);
+    }
+    hp_say("VOICE", a);
+}
+static void hp_press(uint32_t p)
+{
+    uint32_t g = hp.grp % 3u, bit = 1u << p, v;
+    static const char *const FIN[4] = {"NORM", "EXTEND", "SHARP", "FLAT"};
+    static const char *const FOUT[4] = {"DELAY", "RANDOM", "FLANGE", "REVERSE"};
+    static const char *const MS[6] = {"6.25 MS", "12.5 MS", "25 MS", "50 MS", "100 MS", "200 MS"};
+    char a[8];
+    if (fm1_ms - hp.hit[p] < HP_DEBOUNCE_MS)
+        return;                                         /* (the same strike, registered twice) */
+    hp.hit[p] = fm1_ms;
+    if (g == 0u) {                                      /* an interval: latched again = let go; else on, maybe held */
+        uint32_t nt = (uint32_t)(60 + HM_PADIV[p]), held = 0;
+        for (v = 0; v < 3u; v++)
+            held |= hm.note[v] == nt;
+        if ((hm_pad & bit) && !held) {                  /* latched, but its voice was taken (a key, the sequence):
+                                                         * played again, still latched */
+            hm_padre |= (uint16_t)bit;
+            return;
+        }
+        if (hm_pad & bit) {
+            hm_pad &= (uint16_t)~bit;
+            hp.pend &= (uint16_t)~bit;
+        } else {
+            hm_pad |= (uint16_t)bit;
+            hp.pend |= (uint16_t)bit, hp.t0[p] = fm1_ms;
+        }
+        return;
+    }
+    if (p == 15u) {
+        hp_rep_press(p);
+        return;
+    }
+    if (g == 1u) {
+        if (p == 0u) {
+            hs.fsel ^= 1u;
+            hp_say("FUNCTION", hs.fsel ? "OUT" : "IN");
+        } else if (p <= 4u) {
+            if (hs.fsel) {
+                hp_s2(p, FOUT[p - 1u]);
+            } else if (p == 2u) {
+                hp_s2(p, "EXTEND");
+            } else {
+                uint32_t m = hp_vmask(), f = p == 1u ? HF_NORM : p == 3u ? HF_SHARP : HF_FLAT;
+                for (v = 0; v < 3u; v++)
+                    if ((m >> v) & 1u)
+                        hs.fn[v] = (uint8_t)f;
+                hp_say(FIN[p - 1u], hs.vsel ? "" : "ALL");
+            }
+        } else if (p == 5u) {
+            hp_voice_step();
+        } else if (p == 6u || p == 7u) {                /* MANUAL / KEYS & MIDI: the other held too, both */
+            uint32_t other = p == 6u ? 7u : 6u;
+            hs.ctl = (uint8_t)((smk_pick_down >> other) & 1u ? 3u : p == 6u ? HC_MAN : HC_KEYS);
+            hp_ctlname(a);
+            hp_say("CONTROL", a);
+        } else if (p < 14u) {
+            hp_s2(p, MS[p - 8u]);
+        } else {
+            hs.byp ^= 1u;
+            hp_say("IN/OUT", hs.byp ? "OUT" : "IN");
+        }
+        return;
+    }
+    if (p == 14u) {                                     /* G3's bottom pad 7: VOICE, as G2's (K6 PAN acts on it) */
+        hp_voice_step();
+        return;
+    }
+    if (p < 4u) {                                       /* G3: DRY, V1 .. V3 on / off */
+        hs.mute ^= (uint8_t)(1u << p);
+        if (p)
+            hp_vname(a, p - 1u);
+        else
+            str_cpy(a, "DRY", 4);
+        hp_say(a, (hs.mute >> p) & 1u ? "OFF" : "ON");
+    } else if (p == 7u) {
+        hs.fbl ^= 1u;
+        hp_say("FB LIMIT", hs.fbl ? "H949" : "SAFE");
+    } else if (p == 4u || p == 5u || p == 6u || p < 14u) {
+        hp_s2(p, p == 4u ? "DLY ONLY" : p == 5u ? "SPLIT" : p == 6u ? "ALGORITHM" : "DLY ONLY");
+    }
+}
+static void hp_release(uint32_t p, uint32_t held)
+{
+    if (p == 15u && hp.grp % 3u) {                      /* REPEAT: held, momentary */
+        hm_rep_pad = 0;
+        if (held > HP_LONG_MS)
+            hm.rep = (uint8_t)!hm.rep;
+        return;
+    }
+    if (hp.grp % 3u == 0u && held > HP_IV_LONG_MS)       /* an interval held: momentary */
+        hm_pad &= (uint16_t)~(1u << p);
+}
+/* once a pass with the page up (vp_input): the knobs, the pads hit (h), the pads let go */
+static void hp_input(uint32_t h)
+{
+    uint32_t k;
+    for (k = 0; k < 8u; k++) {
+        int32_t s = vp_knob(k);
+        if (s)
+            hp_turn(k, s);
+    }
+    enc_hold |= (1u << NE) - 1u;                       /* (as the vocoder page: no other knob code this pass) */
+    for (k = 0; h && k < 16u; k++)
+        if ((h >> k) & 1u)
+            hp_press(k);
+    for (k = 0; hp.pend && k < 16u; k++)
+        if ((hp.pend >> k) & 1u && !((smk_pick_down >> k) & 1u)) {
+            hp.pend &= (uint16_t)~(1u << k);
+            hp_release(k, fm1_ms - hp.t0[k]);
+        }
+}
+static void hp_select(int32_t s)                    /* < > (and SELECT): the groups */
+{
+    hp.grp = (uint8_t)((hp.grp + (s > 0 ? 1u : 2u)) % 3u);
+    if (hp.pend & 0x8000u)
+        hm_rep_pad = 0;
+    hp.pend = 0;                                        /* (a pad held over the change: it stays as it is) */
+}
+
+/* a fader moved while the page is up (main.c smk_faders): the page stays, its header says what the fader did (the
+ * owner, 2026-11-13: "we should be able to see the large pitch dial and info when operating the faders"), as the
+ * FADER BANK screen would: the value, or which way to move it to pick up. 0: the page is not up (the screen shows) */
+static int hp_fader(uint32_t i, int waiting, int up)
+{
+    char lab[10], v2[20];
+    int16_t *vp;
+    if (!vis_pg || !vis_shown())
+        return 0;
+    (void)fb_text(smk_fbank % FB_N, i, lab, v2, &vp);
+    if (waiting)
+        hp_say(lab, up ? "MOVE UP" : "MOVE DOWN");     /* (PICKUP: the fader waits for the bank's value) */
+    else
+        hp_say(lab, v2);
+    return 1;
+}
+
+/* ---- the meters (once a frame, from hp_leds) ---- */
+static uint32_t hp_step(int32_t pk)                 /* a peak (0 .. 32767) in 8 steps of 6 dB */
+{
+    uint32_t s = 0, x = (uint32_t)(pk > 0 ? pk : 0) >> 7;
+    for (; x && s < 7u; x >>= 1)
+        s++;
+    return s;
+}
+static void hp_meters(void)
+{
+    uint32_t k;
+    for (k = 0; k < 6u; k++) {
+        int32_t pk = hm.up[k];
+        uint32_t s = hp_step(pk);
+        hm.up[k] = 0;
+        if (k == HM_UP_IN) {                            /* (the IN lamps: the raw peak, held ~0.5 s, then falling) */
+            if (pk >= (int32_t)hp.inpk)
+                hp.inpk = (uint16_t)(pk > 32767 ? 32767 : pk), hp.inpk_t = 15;
+            else if (hp.inpk_t)
+                hp.inpk_t--;
+            else
+                hp.inpk = (uint16_t)(hp.inpk - (hp.inpk >> 3));
+        }
+        if (pk >= 29204)                                /* -1 dBFS: red, held ~1 s */
+            hp.red_t[k] = 30;
+        else if (hp.red_t[k])
+            hp.red_t[k]--;
+        if (s >= hp.mk[k])
+            hp.mk[k] = (uint8_t)s, hp.mkt[k] = 0;
+        else if (++hp.mkt[k] >= 4u)
+            hp.mk[k]--, hp.mkt[k] = 0;
+    }
+}
+static void hp_padmeter(uint32_t p, const uint8_t *c, uint32_t k)   /* pad p: colour c by meter k's level, never under
+                                                     * HP_PAD_ON: a pad that is on shows its colour in silence too (the
+                                                     * 2026-11-13 screenshots: a quiet active pad was darker than an
+                                                     * inactive one, an unmuted voice darker than a muted one) */
+{
+    uint32_t b = VP_MB[hp.mk[k] & 7u] < HP_PAD_ON ? HP_PAD_ON : VP_MB[hp.mk[k] & 7u];
+    if (hp.red_t[k])
+        padled_set(p, 255, 20, 20);
+    else if (hp.mk[k] >= 7u)
+        padled_set(p, 255, 120, 0);                     /* (-6 dBFS and over: orange) */
+    else
+        padled_set(p, (uint8_t)(c[0] * b / 255u), (uint8_t)(c[1] * b / 255u), (uint8_t)(c[2] * b / 255u));
+}
+static void hp_leds(void)
+{
+    static const uint8_t RED[3] = {255, 30, 20}, GRN[3] = {40, 230, 60}, AMB[3] = {255, 170, 0}, WHT[3] = {200, 200, 200};
+    uint32_t g = hp.grp % 3u, p, v;
+    hp_meters();
+    for (p = 0; p < 16u; p++)
+        padled_set(p, 4, 4, 4);                         /* (Stage 2's and the free: nearly dark) */
+    if (g == 0u) {
+        for (p = 0; p < 16u; p++) {
+            uint32_t nt = (uint32_t)(60 + HM_PADIV[p]), u = 3u;
+            for (v = 0; v < 3u; v++)
+                if (hm.note[v] == nt)
+                    u = v;
+            if ((smk_pick_down >> p) & 1u && (hm_pad >> p) & 1u)
+                padled_set(p, 255, 255, 255);           /* (held: white) */
+            else if (u < 3u)
+                hp_padmeter(p, HP_VRGB[u], HM_UP_V + u);
+            else
+                padled_set(p, 16, 16, 16);
+        }
+        return;
+    }
+    if (g == 1u) {
+        uint32_t m = hp_vmask(), fv = m == 7u ? 0u : (uint32_t)__builtin_ctz(m), fn = hs.fn[fv];
+        padled_set(0, hs.fsel ? 40 : 255, hs.fsel ? 230 : 30, hs.fsel ? 60 : 20);
+        for (p = 1; p <= 4u; p++) {
+            if (hs.fsel)
+                padled_set(p, 4, 20, 6);                /* (OUT: Stage 2) */
+            else if (p == 2u)
+                padled_set(p, 6, 2, 2);                 /* (EXTEND: Stage 2, nearly dark as the others) */
+            else if ((p == 1u && fn == HF_NORM) || (p == 3u && fn == HF_SHARP) || (p == 4u && fn == HF_FLAT))
+                hp_padmeter(p, RED, HM_UP_OUT);         /* (the active function: the voices' level) */
+            else
+                padled_set(p, 22, 3, 2);                /* (an IN function not chosen: dim red) */
+        }
+        if (hs.vsel)
+            vp_padrgb(5, HP_VRGB[(hs.vsel - 1u) % 3u], 0);
+        else
+            vp_padrgb(5, WHT, 0);
+        vp_padrgb(6, AMB, hs.ctl & HC_MAN ? 0u : 4u);
+        vp_padrgb(7, AMB, hs.ctl & HC_KEYS ? 0u : 4u);
+        if (hs.byp)
+            padled_set(14, 60, 6, 6);                   /* (OUT: the input straight through) */
+        else
+            hp_padmeter(14, GRN, HM_UP_IN);             /* (IN: the input's level) */
+    } else {
+        if (hs.mute & 1u)
+            padled_set(0, 30, 2, 2);
+        else
+            hp_padmeter(0, WHT, HM_UP_IN);
+        for (v = 0; v < 3u; v++) {
+            if ((hs.mute >> (v + 1u)) & 1u)
+                padled_set(1u + v, 30, 2, 2);
+            else
+                hp_padmeter(1u + v, HP_VRGB[v], HM_UP_V + v);
+        }
+        if (hs.fbl)
+            hp_padmeter(7, AMB, HM_UP_FB);              /* (H949: amber, the loop's level) */
+        else
+            hp_padmeter(7, GRN, HM_UP_FB);
+        if (hs.vsel)                                    /* (bottom 7: VOICE, as G2's) */
+            vp_padrgb(14, HP_VRGB[(hs.vsel - 1u) % 3u], 0);
+        else
+            vp_padrgb(14, WHT, 0);
+    }
+    if (hm_rep_shown())
+        padled_set(15, 220, 120, 255);                  /* REPEAT (G2, G3): violet, flashing while latched */
+    else
+        padled_set(15, 30, 16, 40);
+    if ((int32_t)(hp.s2_until - fm1_ms) > 0)
+        padled_set(hp.s2_p, 255, 140, 0);               /* (a Stage 2 pad just pressed: amber) */
+}
+
+/* ---- the view ---- */
+static uint32_t hp_rvoice(void)                     /* the readout's voice: the knob's, MANUAL's, the newest */
+{
+    uint32_t v, best = 3u;
+    if (hp.rv_t)
+        return hp.rv % 3u;
+    if ((hs.ctl & HC_MAN) && hm.on[hm_mvoice()])
+        return hm_mvoice();
+    for (v = 0; v < 3u; v++)
+        if (hm.on[v] && hm.note[v] && (best == 3u || hm.age[v] > hm.age[best]))
+            best = v;
+    return best < 3u ? best : hs.vsel ? (hs.vsel - 1u) % 3u : 0u;
+}
+static void hp_mkview(hp_view_t *w)
+{
+    uint32_t v, ctl = hs.ctl & 3u, m = hm_mvoice(), pk = (uint32_t)hp.mk[HM_UP_IN];
+    memset(w, 0, sizeof *w);
+    str_cpy(w->head, ui.msg_t ? ui.msg : hp.msg_t ? hp.msg : hs.byp ? "BYPASSED" : HP_GN[hp.grp % 3u], sizeof w->head);
+    w->grp = (uint8_t)(hp.grp % 3u);
+    w->rv = (uint8_t)hp_rvoice();
+    w->rv_on = hm.on[w->rv];
+    w->ratio = (uint16_t)hm_ratio1000(w->rv);
+    w->ctl = (uint8_t)(ctl ? ctl : HC_KEYS);
+    w->scale = hm_int;
+    w->note = hm_int ? hm.tnote : 0;
+    w->rep = (uint8_t)hm_rep_shown();
+    w->fn = hs.fn[w->rv];
+    w->fsel = hs.fsel, w->vsel = hs.vsel, w->byp = hs.byp, w->fbl = hs.fbl, w->low = hs.low, w->high = hs.high;
+    w->pit = (int8_t)clamp(hm_pitch, -64, 63);
+    w->spread = hm_spread;
+    w->psel = hs.pan[hs.vsel ? (hs.vsel - 1u) % 3u : 0u];
+    w->inl = hs.inl, w->fb = (uint8_t)hm_fb, w->wd = (uint8_t)hm_wd, w->dry = hs.dry, w->dmute = hs.mute & 1u;
+    {   /* the IN lamps at their labels: -40, -18, -12, -6, -1 dBFS (from the meter's 6 dB steps the red lamp lit from
+         * -12 dBFS: red on any healthy signal, 2026-11-15) */
+        uint32_t ip = hp.inpk;
+        w->lamps = (uint8_t)(ip >= 29204u ? 5u : ip >= 16422u ? 4u : ip >= 8231u ? 3u : ip >= 4125u ? 2u : ip >= 328u ? 1u : 0u);
+        (void)pk;
+    }
+    w->clip = hp.red_t[HM_UP_IN] != 0;
+    w->h949_red = hp.red_t[HM_UP_FB] != 0;
+    for (v = 0; v < 3u; v++) {
+        int32_t s = hm.note[v] ? (int32_t)hm.note[v] - 60 : 0;
+        w->on[v] = hm.on[v];
+        w->fnv[v] = hs.fn[v];
+        w->lv[v] = hs.lv[v];
+        w->mute[v] = (uint8_t)((hs.mute >> (v + 1u)) & 1u);
+        w->mk[v] = hp.mk[HM_UP_V + v];
+        w->red[v] = hp.red_t[HM_UP_V + v] != 0;
+        w->mic[v] = hs.mic[v];
+        w->pan[v] = (int8_t)clamp(hs.pan[v] + (v == 0u ? -(int32_t)hm_spread * 64 / 100 : v == 2u ? (int32_t)hm_spread * 63 / 100 : 0),
+                                  -64, 63);         /* (as hm_block works it out) */
+        w->iv[v] = (int8_t)((ctl & HC_MAN) && v == m && (ctl == HC_MAN || !hm.note[v]) ? 127 : clamp(s, -60, 60));
+    }
+}
+static uint32_t hp_sig(const hp_view_t *w)
+{
+    const uint8_t *q = (const uint8_t *)w;
+    uint32_t i, h = 2166136261u;
+    for (i = 0; i < sizeof *w; i++)
+        h = (h ^ q[i]) * 16777619u;
+    return h;
+}
+
+/* ---- the drawing (from the view only) ---- */
+static const uint8_t HP_SEG7[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+static void hp_digit(int32_t x, int32_t y, uint32_t d, uint16_t on)   /* a seven-segment digit, 32 x 62 */
+{
+    const int32_t w = 32, t = 6, hh = (62 - 3 * 6) / 2;
+    uint32_t m = HP_SEG7[d % 10u];
+#define HP_S(bit, X, Y, W, H) cv_rect(X, Y, W, H, (m >> (bit)) & 1u ? on : HP_SEG_OFF)
+    HP_S(0, x + t, y, w - 2 * t, t);                    /* a */
+    HP_S(1, x + w - t, y + t, t, hh);                   /* b */
+    HP_S(2, x + w - t, y + 2 * t + hh, t, hh);          /* c */
+    HP_S(3, x + t, y + 2 * t + 2 * hh, w - 2 * t, t);   /* d */
+    HP_S(4, x, y + 2 * t + hh, t, hh);                  /* e */
+    HP_S(5, x, y + t, t, hh);                           /* f */
+    HP_S(6, x + t, y + t + hh, w - 2 * t, t);           /* g */
+#undef HP_S
+}
+static void hp_ivname(char *b, int32_t s)           /* an interval: "U", "+M3", "-P5", "+8VA", "-15MA", "+17" */
+{
+    static const char *const N[13] = {"U", "m2", "M2", "m3", "M3", "P4", "TT", "P5", "m6", "M6", "m7", "M7", "8VA"};
+    int32_t a = s < 0 ? -s : s;
+    if (!s) {
+        str_cpy(b, "U", 2);
+        return;
+    }
+    b[0] = s < 0 ? '-' : '+';
+    if (a <= 12)
+        str_cpy(b + 1, N[a], 4);
+    else if (a == 24)
+        str_cpy(b + 1, "15MA", 5);
+    else
+        fmt_int(b + 1, a);
+}
+static void hp_paint(const hp_view_t *w)
+{
+    static const char *const FL[8] = {"NRM", "EXT", "SHP", "FLT", "DLY", "RND", "FLG", "REV"};
+    uint32_t v, i, r = w->ratio;
+    uint16_t on = w->rv_on ? HP_SEG_ON : RGB(120, 24, 18), W = RGB(220, 220, 220);
+    char b[16];
+    /* the header: the group, or what was just set */
+    if (text_w(&FONT_L, w->head) <= 236)
+        cv_text(120 - text_w(&FONT_L, w->head) / 2, 0, &FONT_L, w->head,
+                hp.msg_t || ui.msg_t ? C_WHITE : w->byp ? RGB(255, 40, 40) : TE_G4);   /* (BYPASSED: red, every group) */
+    else
+        cv_text(120 - text_w(&FONT_S, w->head) / 2, 8, &FONT_S, w->head, C_WHITE);
+    /* the PITCH RATIO readout: d.ddd */
+    hp_digit(76, 36, r / 1000u, on);
+    cv_rect(112, 92, 6, 6, on);                         /* (the decimal point) */
+    hp_digit(122, 36, r / 100u % 10u, on);
+    hp_digit(162, 36, r / 10u % 10u, on);
+    hp_digit(202, 36, r % 10u, on);
+    /* at its left: the voice, the control method, the sung note, REP */
+    hp_vname(b, w->rv);
+    cv_text(4, 34, &FONT_L, b, HP_VCOL(w->rv));
+    str_cpy(b, w->ctl == 3u ? "K+M" : w->ctl == HC_MAN ? "MAN" : "KEYS", 5);
+    cv_text(4, 66, &FONT_S, b, W);
+    if (w->byp)
+        cv_text(42, 66, &FONT_S, "OUT", RGB(255, 40, 40));   /* (IN / OUT on OUT: bypassed) */
+    if (w->scale && w->note)
+        note_name(b, w->note);
+    else
+        str_cpy(b, w->scale ? "--" : "FIX", 4);
+    cv_text(4, 84, &FONT_S, b, w->scale ? W : TE_G3);
+    if (w->rep)
+        cv_text(36, 84, &FONT_S, "REP", RGB(220, 120, 255));
+    /* the function lights: the readout voice's (red: pitch; green: delay, Stage 2) */
+    for (i = 0; i < 8u; i++) {
+        int32_t x = 2 + (int32_t)i * 30;
+        int lit = i < 4u && ((i == 0u && w->fn == HF_NORM) || (i == 2u && w->fn == HF_SHARP) || (i == 3u && w->fn == HF_FLAT));
+        uint16_t c = i < 4u ? (i == 1u ? RGB(70, 16, 12) : RGB(160, 30, 24)) : RGB(14, 60, 20);
+        if (lit) {
+            cv_rect(x, 103, 28, 18, HP_SEG_ON);
+            cv_text(x + 2, 104, &FONT_S, FL[i], C_BLACK);
+        } else {
+            cv_text(x + 2, 104, &FONT_S, FL[i], c);
+        }
+    }
+    /* the voices */
+    for (v = 0; v < 3u; v++) {
+        int32_t x = (int32_t)v * 80, lw = 70 * w->lv[v] / 100, mw = w->mk[v] ? 10 * (int32_t)w->mk[v] : 0;
+        uint16_t vc = HP_VCOL(v), tc = w->on[v] ? C_WHITE : TE_G2;
+        hp_vname(b, v);
+        cv_text(x + 4, 124, &FONT_S, b, w->mute[v] ? TE_G2 : vc);
+        if (w->fnv[v] == HF_SHARP || w->fnv[v] == HF_FLAT)
+            str_cpy(b, w->fnv[v] == HF_SHARP ? "SHP" : "FLT", 4);
+        else if (w->iv[v] == 127)
+            str_cpy(b, "MAN", 4);
+        else if (w->on[v])
+            hp_ivname(b, w->iv[v]);
+        else
+            str_cpy(b, "-", 2);
+        cv_text(x + 26, 124, &FONT_S, b, tc);
+        if (w->mic[v]) {
+            b[0] = w->mic[v] < 0 ? '-' : '+';
+            fmt_int(b + 1, w->mic[v] < 0 ? -w->mic[v] : w->mic[v]);
+            cv_text(x + 26, 139, &FONT_S, b, RGB(255, 190, 0));   /* (MICRO, under its interval) */
+        }
+        cv_rect(x + 4, 156, 70, 4, TE_G1);              /* LEVEL */
+        if (!w->mute[v] && lw)
+            cv_rect(x + 4, 156, lw, 4, vc);
+        cv_rect(x + 4, 162, 70, 4, TE_G1);              /* the meter */
+        if (w->mute[v])
+            cv_text(x + 4, 139, &FONT_S, "OFF", RGB(255, 40, 40));
+        else if (mw)
+            cv_rect(x + 4, 162, mw, 4, w->red[v] ? RGB(255, 30, 30) : w->mk[v] >= 7u ? RGB(255, 140, 0) : W);
+        cv_rect(x + 4, 169, 70, 1, TE_G2);              /* its pan (Stage 1c): a line, the centre marked, a tick where */
+        cv_rect(x + 38, 168, 1, 3, TE_G3);
+        cv_rect(x + 38 + (int32_t)w->pan[v] * 35 / 64, 167, 3, 5, w->pan[v] ? vc : W);
+    }
+    /* the status line (not knobs): the input lights (-40, -18, -12, -6, -1 dBFS), FB LIMIT, IN / OUT */
+    cv_text(2, 174, &FONT_S, "IN", TE_G3);
+    for (i = 0; i < 5u; i++) {
+        uint16_t c = i == 0u ? RGB(255, 210, 0) : i == 4u ? RGB(255, 30, 30) : RGB(40, 230, 60);
+        cv_rect(24 + (int32_t)i * 12, 177, 9, 10, (i < w->lamps || (i == 4u && w->clip)) ? c : TE_G1);
+    }
+    {   /* K7 PITCH: the same knob on every group, so the same place (with the fader's semitones) */
+        int32_t x = 90, kw = text_w(&FONT_S, "K7") + 4;
+        cv_rect(x, 174, kw, 16, TE_COL[2]);
+        cv_text(x + 2, 174, &FONT_S, "K7", C_BLACK);
+        x = cv_text(x + kw + 4, 174, &FONT_S, "PITCH", TE_G4) + 4;
+        hp_pitch(b, w->pit);
+        cv_text(x, 174, &FONT_S, b[0] == ' ' ? b + 1 : b, C_WHITE);
+    }
+    cv_text(236 - text_w(&FONT_S, w->fbl ? "H949" : "SAFE"), 174, &FONT_S, w->fbl ? "H949" : "SAFE",
+            w->fbl ? (w->h949_red ? RGB(255, 40, 40) : RGB(255, 150, 0)) : TE_G4);   /* FB LIMIT */
+    /* the group's knobs, each with its value beside it (the owner, 2026-11-13: the knob and its number together, the K
+     * tags coloured, nothing twice): left to right, two rows. MICRO and LEVEL's values are the voices' strips above */
+    {
+        char k8[12], v1[12], v2[12], v3[12], v4[12], n4[10];
+        int32_t x = 2, y = 191;
+        uint32_t n, m;
+        const char *K[5], *N[5], *V[5];
+        uint8_t KN[5];
+        hp_pct(k8, w->wd);
+        if (w->grp == 0u) {
+            K[0] = "K1-3", N[0] = "MICRO", V[0] = "", KN[0] = 1;
+            K[1] = "K4-6", N[1] = "LEVEL", V[1] = "", KN[1] = 4;
+            n = 2;
+        } else if (w->grp == 1u) {
+            if (w->inl) {
+                int32_t dd = (int32_t)w->inl - (int32_t)HM_INL_0;
+                v1[0] = dd < 0 ? '-' : '+';
+                fmt_int(v1 + (dd != 0), dd < 0 ? -dd : dd);   /* (0: "0", no sign) */
+            } else {
+                str_cpy(v1, "OFF", 4);
+            }
+            hp_pct(v2, w->fb);
+            hp_sdb(v3, (int32_t)w->low - (int32_t)HM_LOW_0);
+            v3[str_len(v3) - 3u] = 0;                   /* (no " DB": the row is narrow; the header has it) */
+            if (w->low == HM_LOW_0)
+                str_cpy(v3, "0", 2);
+            hp_sdb(v4, (int32_t)w->high - (int32_t)HM_HIGH_0);
+            v4[str_len(v4) - 3u] = 0;
+            if (w->high == HM_HIGH_0)
+                str_cpy(v4, "0", 2);
+            K[0] = "K1", N[0] = "IN", V[0] = v1, KN[0] = 1;
+            K[1] = "K3", N[1] = "FB", V[1] = v2, KN[1] = 3;
+            K[2] = "K5", N[2] = "LO", V[2] = v3, KN[2] = 5;
+            K[3] = "K6", N[3] = "HI", V[3] = v4, KN[3] = 6;
+            n = 4;
+        } else {
+            hp_db(v1, w->dmute ? 0u : w->dry);
+            if (str_len(v1) > 3u && v1[str_len(v1) - 1u] == 'B')
+                v1[str_len(v1) - 3u] = 0;               /* ("-6.0 DB" -> "-6.0") */
+            K[0] = "K1", N[0] = "DRY", V[0] = v1, KN[0] = 1;
+            K[1] = "K2-4", N[1] = "LEVEL", V[1] = "", KN[1] = 2;
+            fmt_int(v2, w->spread);
+            K[2] = "K5", N[2] = "SPREAD", V[2] = v2, KN[2] = 5;
+            {   /* K6 PAN: the VOICE-selected voice's (ALL: V1's, the three move together) */
+                uint32_t sel = w->vsel ? (w->vsel - 1u) % 3u : 0u;
+                str_cpy(n4, "PAN ", 5);
+                if (w->vsel)
+                    hp_vname(n4 + 4, sel);
+                else
+                    str_cpy(n4 + 4, "ALL", 4);
+                hp_panname(v3, w->psel);
+            }
+            K[3] = "K6", N[3] = n4, V[3] = v3, KN[3] = 6;
+            n = 4;
+        }
+        K[n] = "K8", N[n] = "MIX", V[n] = k8, KN[n] = 8;
+        n++;
+        for (m = 0; m < n; m++) {
+            int32_t kw = text_w(&FONT_S, K[m]) + 4, iw = kw + 4 + text_w(&FONT_S, N[m]) + (V[m][0] ? 4 + text_w(&FONT_S, V[m]) : 0);
+            if (x > 2 && x + iw > 238)
+                x = 2, y += 16;                         /* (the next row: three fit) */
+            cv_rect(x, y, kw, 15, TE_COL[(KN[m] - 1u) & 3u]);   /* the K tag in the knob's colour (K1 / K5 blue, K2 / K6
+                                                         * green, K3 / K7 yellow, K4 / K8 orange: the menu's) */
+            cv_text(x + 2, y, &FONT_S, K[m], C_BLACK);
+            cv_text(x + kw + 4, y, &FONT_S, N[m], TE_G4);
+            if (V[m][0])
+                cv_text(x + kw + 4 + text_w(&FONT_S, N[m]) + 4, y, &FONT_S, V[m], C_WHITE);
+            x += iw + 8;
+        }
+    }
+}
+/* the page, drawn as the vocoder page is (vis_draw: two bands of 120 rows), only when its view changed */
+static uint32_t hp_frame(hp_view_t *w)
+{
+    if (hp.msg_t)
+        hp.msg_t--;
+    if (hp.rv_t)
+        hp.rv_t--;
+    hp_mkview(w);
+    return hp_sig(w) ^ 0x9E3779B9u;
+}

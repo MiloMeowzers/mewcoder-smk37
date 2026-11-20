@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* SMK-37 Pro FADER BANK screen (firmware/src/ui_fbank.c) on the UI harness: banks wrap, what each fader sets,
- * closes by itself; renders DIR/fbank-a.ppm, fbank-b.ppm. */
+ * stays up until FADER BANK or another screen closes it (no time-out); renders DIR/fbank-a.ppm, fbank-b.ppm. */
 #define UI_PAGES_HARNESS_ONLY 1
 #include "ui_pages_test.c"
 static uint8_t smk_fbank, smk_fbank_new;           /* (ui_input.c, SMK build) */
@@ -48,6 +48,14 @@ int main(int argc, char **argv)
     check(smk_fbank == 0, "K2 turns the bank round (D -> A)");
     fb_close();
     check(!fb_shown(), "closed");
+    fb_set(1);                                          /* (2026-11-13: no time-out; another screen closes it) */
+    fm1_ms += 60000u;
+    fb_expire();
+    check(fb_shown(), "no time-out: still up a minute on");
+    ui.layer = LY_STEP;
+    fb_expire();
+    ui.layer = LY_PLAY;
+    check(!fb_shown(), "a layer over it: it goes, and does not come back after");
     printf("fbank: %s\n", fails ? "FAIL" : "ok");
     return fails != 0;
 }

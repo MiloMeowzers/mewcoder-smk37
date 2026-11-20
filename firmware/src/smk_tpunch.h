@@ -85,10 +85,17 @@ static int tp_fx(int32_t fx)            /* the rhythmic ones: on the stems with 
 }
 
 /* the memory shared out for this mode (core 0, at a block's start: nothing reads it then) */
+#ifdef SMK_HARM
+#define TP_HM (hm_on ? HM_MEM : 0u)       /* HARMONY's part at the pool's start (smk_harm.h; harmoniser-spec.md §7g: the
+                                           * stems share what is left, about -20 %; the master's ring as it was) */
+_Static_assert(HM_MEM <= NTRK * SL_LEN, "the harmoniser's memory fits the SLICER STUT recordings' part");
+#else
+#define TP_HM 0u
+#endif
 static void tp_setup(uint32_t mode, uint32_t layout)
 {
     uint32_t i, n = layout == 2u ? 4u : layout == 1u ? 7u : 6u;   /* (usb.c UL_*: 2 SYNTHS+RET, 1 DRUMS+RET, 3 ALL DRY) */
-    memset(smk_fxpool, 0, sizeof smk_fxpool);
+    memset(smk_fxpool + TP_HM, 0, sizeof smk_fxpool - TP_HM * sizeof smk_fxpool[0]);
     for (i = 0; i < NTRK; i++)                          /* the SLICERs: no STUT recording or repeat left */
         sl[i].loop = 0, sl[i].rec_on = 0, sl[i].rec = 0, sl[i].w = 0;
     punch.cur = -1, punch.g = 0, punch.w = 0;
@@ -97,15 +104,16 @@ static void tp_setup(uint32_t mode, uint32_t layout)
                                                          * the counter, so idx % cap stays continuous) */
     if (mode == SFX_SLICER || !layout) {                /* (0: STEREO) */    /* as SLOOP: the master's whole ring, the SLICER's STUT */
         punch_ring = smk_fxpool + NTRK * SL_LEN, punch_cap = PUNCH_N;
-        tp.n = 0, tp_on = 0, sl_mem_lent = 0;
+        tp.n = 0, tp_on = 0, sl_mem_lent = TP_HM != 0u;   /* (HARMONY: STUT records nothing, its memory is the
+                                                         * harmoniser's) */
         return;
     }
     punch_ring = smk_fxpool + TP_POOL - TP_MRING, punch_cap = TP_MRING;
     tp.n = (uint8_t)n;
     tp.s = mode == SFX_HQ ? 1u : 2u;
-    tp.cap = (TP_POOL - TP_MRING) / n;
+    tp.cap = (TP_POOL - TP_MRING - TP_HM) / n;
     for (i = 0; i < n; i++)
-        tp_ring[i] = smk_fxpool + i * tp.cap, tp_half[i] = 0;
+        tp_ring[i] = smk_fxpool + TP_HM + i * tp.cap, tp_half[i] = 0;
     tp_on = 1, sl_mem_lent = 1;
 }
 
@@ -335,6 +343,41 @@ static inline int32_t tp_x(uint32_t r, uint32_t i, int32_t x)
     if (tp_xg[i] >= 32767)
         return w;
     return (int32_t)(((int64_t)x * tp_xd[i] + (int64_t)w * tp_xg[i]) >> 15);
+}
+/* tp_x split (harmoniser-spec.md §13v-7): the same ring and step, x recorded, the punch returned as its dry share (*dq,
+ * Q15: 32768 = x passes as it is) and its effect part, so a stereo track can take the punch of its mono blend: each side
+ * x its share, plus the effect part at the track's pan. Within 1 LSB of tp_x when a punch fades */
+static inline int32_t tp_xs(uint32_t r, uint32_t i, int32_t x, int32_t *dq)
+{
+    int16_t *b = tp_ring[r];
+    int32_t w;
+    if (tp_wr[i]) {
+        if (tp_wr[i] == 1u)
+            b[tp_wi[i]] = (int16_t)clamp((tp.s == 1u ? x : (tp_half[r] + x) >> 1) >> 3, -32768, 32767);
+    } else {
+        tp_half[r] = x;
+    }
+    if (!tp_md[i] || !tp_xg[i]) {
+        *dq = 32768;
+        return 0;
+    }
+    if (tp_md[i] == 2u) {
+        w = x;
+    } else {
+        int32_t a = b[tp_ia[i]], c = b[tp_ib[i]];
+        w = (a + (((c - a) * tp_fr[i]) >> 15)) << 3;
+    }
+    w = (int32_t)(((int64_t)w * tp_wg[i]) >> 15);
+    if (tp_md[i] == 3u) {
+        int32_t a = b[tp_ic[i]], c = b[tp_id[i]], v = (a + (((c - a) * tp_fr2[i]) >> 15)) << 3;
+        w += (int32_t)(((int64_t)v * tp_gb[i]) >> 15);
+    }
+    if (tp_xg[i] >= 32767) {
+        *dq = 0;
+        return w;
+    }
+    *dq = tp_xd[i];
+    return (int32_t)(((int64_t)w * tp_xg[i]) >> 15);
 }
 static void tp_zero(uint32_t r, uint32_t n)             /* a silent stem's block: its ring records the silence */
 {

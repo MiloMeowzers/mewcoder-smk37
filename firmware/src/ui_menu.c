@@ -31,9 +31,8 @@ enum { MI_COLOR, MI_ZOOM,
        MI_LAYOUT,                                  /* SMK-37: USB > USB LAYOUT (usb.c usb_layout; main.c re-plugs USB) */
        MI_SRATE,                                   /* SMK-37: USB > STEM RATE (usb.c stem_rate; main.c re-plugs USB) */
        MI_SFILT,                                   /* SMK-37: USB > STEM FILTER (usb.c stem_light, live) */
-#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
-       MI_UIN,                                     /* the vocoder build: USB > AUDIO IN (usb.c uin_mode, live) */
-#endif
+       MI_SPAIR,                                   /* SMK-37: USB > STEREO PAIR (fx.c smk_pair: SYNTHS+RET's 5-6; live;
+                                                    * harmoniser-spec.md §10c) */
        MI_SFX,                                     /* SMK-37: PUNCH > STEM FX (smk_tpunch.h stem_fx, live) */
        MI_PFADE,                                   /* SMK-37: PUNCH > FADE (GLO G_FXFADE: as SELECT on the FX page) */
        MI_XFADE,                                   /* SMK-37: PUNCH > XFADE (smk_tpunch.h tp_xfl, live) */
@@ -43,6 +42,10 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * (smk_vocoder.h; kept, project.c) */
        MI_VTRL, MI_VTRR,                           /* INPUT > TRIM L, TRIM R, each with its meter (smk_vocoder.h voc_trim,
                                                     * uin_pk; kept, project.c) */
+#if !SMK_UAC_PROBE
+       MI_UIN,                                     /* INPUT > AUDIO IN (usb.c uin_mode, live; USB's until 2026-11-13, its
+                                                    * place now STEREO PAIR's) */
+#endif
        MI_VMODE, MI_VLVL, MI_VDRY, MI_VHF,         /* the vocoder build: VOCODER > MODE, LEVEL, DRY, HF (smk_vocoder.h:
                                                     * the audio track, track 3; live, not kept) */
        MI_VCUT, MI_VRES, MI_VVM, MI_VPINK,         /* CARRIER > CUTOFF, RESO (the saws' low-pass), VOICE, NOISE (the
@@ -54,6 +57,16 @@ enum { MI_COLOR, MI_ZOOM,
        MI_VEATT, MI_VEREL, MI_VGDEL, MI_VBRM,      /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes), GATE DELAY (the
                                                     * external carrier's gate), BRIDGE MODE (smk_vocoder.h voc_brmode);
                                                     * kept, project.c */
+#if SMK_HARM_BUILD                                 /* (Mewcoder: no HARMONY, LANE THIN, LANE RATE) */
+       MI_HON, MI_HINT, MI_HNOTE, MI_LMONO,        /* HARMONY > HARMONY (smk_harm.h hm_on: T1 the harmoniser; kept,
+                                                    * project.c), INTERVALS (hm_int: FIXED / SCALE; kept),
+                                                    * project.c), SUNG NOTE (the tracker's, a readout) */
+       MI_LT0, MI_LT1, MI_LT2, MI_LT3,             /* LANE THIN > VOICE, T2, T3, DRUMS (smk_harm.h hm_thin: a lane's voices
+                                                    * may fade under load; kept, project.c; harmoniser-spec.md §13u) */
+       MI_LR0, MI_LR1, MI_LR2, MI_LR3,             /* LANE RATE > VOICE, T2, T3, DRUMS (hm_lrate: 44.1 / 22K; kept) */
+#endif
+       MI_PC1, MI_PC2, MI_PC3,                     /* POLY CAP > T1, T2, T3 (hm_pcap: OFF, 1..5 while HARMONY / the VOCODER
+                                                    * runs; kept with the project, §13w-2) */
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -82,16 +95,21 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "FILTER RESO",
 #if BOARD_SMK37
-                                              "USB LAYOUT", "STEM RATE", "STEM FILTER",
-#if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
-                                              "AUDIO IN",
-#endif
+                                              "USB LAYOUT", "STEM RATE", "STEM FILTER", "STEREO PAIR",
                                               "STEM FX", "FADE", "XFADE", "CURVE",
 #if SMK_UAC_IN_PROBE
                                               "SETUP", "CARRIER", "IN L", "IN R", "TRIM L", "TRIM R",
+#if !SMK_UAC_PROBE
+                                              "AUDIO IN",
+#endif
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
                                               "ATTACK", "RELEASE", "GATE DELAY", "BRIDGE MODE",
+#if SMK_HARM_BUILD
+                                              "HARMONY", "INTERVALS", "SUNG NOTE",
+                                              "LANE MONO", "VOICE", "T2", "T3", "DRUMS", "VOICE", "T2", "T3", "DRUMS",
+#endif
+                                              "T1", "T2", "T3",
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -102,14 +120,27 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "2ND CORE", "HARDWARE CALIBRATION", "MIDI LEARN CLEAR", "ABOUT"};
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
-#if SMK_UAC_IN_PROBE
+#if SMK_UAC_IN_PROBE && !SMK_HARM_BUILD           /* Mewcoder: POLY CAP after ENVELOPE */
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV,
-       MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+       MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
-                                              "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "SEQ", "PLAY", "MIDI",
+                                              "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "POLY CAP", "SEQ", "PLAY",
+                                              "MIDI", "DAW", "SYSTEM"};
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_PC1, MI_ADV,
+                                               MI_VEL, MI_TRS,
+                                               MI_DMAP, MI_SYS0, MI_COUNT};
+#define MI_VOC0 MI_VSETUP
+#elif SMK_UAC_IN_PROBE
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV,
+       MS_HARM, MS_LTHIN, MS_LRATE, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
+                                              "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "HARMONY", "LANE THIN",
+                                              "LANE RATE", "POLY CAP", "SEQ", "PLAY", "MIDI",
                                               "DAW", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
-                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_ADV, MI_VEL, MI_TRS,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_PC1, MI_ADV,
+                                               MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
 #else
@@ -121,8 +152,10 @@ static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, M
 #define MI_VOC0 MI_ADV
 #endif
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
-#if SMK_UAC_IN_PROBE
-               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_ADV - MI_VEATT <= 4 &&
+#if SMK_UAC_IN_PROBE && !SMK_HARM_BUILD
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_PC1 - MI_VEATT <= 4 && MI_ADV - MI_PC1 <= 4 &&
+#elif SMK_UAC_IN_PROBE
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_HON - MI_VEATT <= 4 && MI_LT0 - MI_HON <= 4 && MI_LR0 - MI_LT0 <= 4 && MI_PC1 - MI_LR0 <= 4 && MI_ADV - MI_PC1 <= 4 &&
 #else
                MI_ADV - MI_VOC0 <= 4 &&
 #endif
@@ -176,6 +209,16 @@ UI_SMALL static uint32_t mi_carr_now(void)
     return voc_inl % VR_N == VR_CARR ? 3u : voc_inr % VR_N == VR_CARR ? 4u : voc_saws % VCS_N;
 }
 #endif
+#if BOARD_SMK37
+#ifndef SMK_PAIR_STATE                                  /* (fx.c's STEREO PAIR; a host test of this file alone) */
+#define SP_RET 0u
+#define SP_DRUMS 1u
+#define SP_T1 2u
+#define SP_N 5u
+static uint8_t smk_pair;
+#define SMK_PAIR_STATE 1
+#endif
+#endif
 UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
 {
     static const char *const G[4][2] = {{"RESAMPLED ON", "THE KEYBOARD"}, {"LIGHTEST:", "PC CONVERTS"},
@@ -195,14 +238,36 @@ UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
             return line ? "IN VOC ALONE" : "TWO SAWS";
         return "";
     }
+    if (i == MI_VMODE && hm_on)                         /* (HARMONY on: the vocoder off) */
+        return line ? "HARMONY ON" : "LOCKED:";
+#ifdef SMK_HARM
+    if (i == MI_LIMIT && hm_on && lim_classic)          /* (fx.c LIM_CLS: CLASSIC back when HARMONY goes off) */
+        return line ? "HARMONY ON" : "SOFT WHILE";
+#endif
+    if (i == MI_SPAIR) {                                /* (SYNTHS+RET only; the return mono where the source was) */
+        static const char *const CH[SP_N] = {"", "ON CH 4", "ON CH 1", "ON CH 2", "ON CH 3"};
+        if (usb_layout != UL_SYNTHS)
+            return line ? "SYNTHS+RET" : "NEEDS";
+        return smk_pair % SP_N ? (line ? CH[smk_pair % SP_N] : "RET MONO") : (line ? "ON 5-6" : "EFFECTS");
+    }
     if (i == MI_VINL || i == MI_VINR) {                 /* (what the route needs or does) */
         uint32_t r = (i == MI_VINL ? voc_inl : voc_inr) % VR_N;
+        if (r == VR_HARM)
+            return hm_on ? (line ? "HARMONISER" : "TO THE") : (line ? "HARMONY ON" : "NEEDS");   /* (13 characters
+                                                         * at most beside HARMONY: "THE HARMONISER" ran off the screen) */
+        if (r == VR_T1 && hm_on)
+            return line ? "HARMONY ON" : "T1 IS";
         if ((r == VR_T1 || r == VR_T2) && !(VSU_SKIP(voc_setup % VSU_N) >> (r - VR_T1) & 1u))
             return line ? (r == VR_T1 ? "T1 OFF" : "T2 OFF") : "NEEDS A SETUP";
         if (r == VR_CARR)
-            return line ? "GATE IT" : "T3 NOTES";
+            return hm_on ? (line ? "HARMONY ON" : "VOCODER OFF:") : (line ? "GATE IT" : "T3 NOTES");
         if (r == VR_T1 || r == VR_T2)
             return line ? "ITS CHAIN" : "AUDIO THROUGH";
+        if (r == VR_T3 && hm_on)
+            return line ? "ITS LANE" : "T3 AUDIO:";      /* (HARMONY: T3 an audio track, harmonised on its own lane) */
+        if (r == VR_T3)                                 /* (the owner, 2026-11-12: TRACK 3 read as the vocoder only; it
+                                                         * is T3's input, dry through its chain in MODE AUDIO) */
+            return voc_mode % VM_N == VM_SAW ? (line ? "ITS VOICE" : "T3 VOCODER:") : (line ? "DRY, ITS FX" : "T3 AUDIO:");
         return "";
     }
 #endif
@@ -305,7 +370,15 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         str_cpy(b + str_len(b), " CHANGED", 9);
         return b;
     }
-    case MI_LIMIT: return lim_classic ? "CLASSIC" : "SOFT";
+    case MI_LIMIT:
+#ifdef SMK_HARM
+        if (lim_classic && hm_on) {                   /* HARMONY forces SOFT (fx.c LIM_CLS; harmoniser-spec.md §13d):
+                                                       * amber, CLASSIC kept for when HARMONY goes off */
+            *c = C_AMB;
+            return "SOFT";
+        }
+#endif
+        return lim_classic ? "CLASSIC" : "SOFT";
     case MI_LAYOUT: return UL_MENU_NAME[usb_layout % UL_N];   /* (usb.c: at the next start) */
     case MI_SFX: {                                    /* the stems' effects: the SLICER's STUT, or the punch-ins */
         static const char *const N[SFX_N] = {"SLICER", "PUNCH", "PUNCH HQ"};
@@ -345,15 +418,22 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     }
     case MI_VSETUP: {                                 /* the tracks beside the audio track, and HQ (dim: AUDIO IN off) */
         static const char *const N[VSU_N] = {"FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"};
+        static const char *const NH[VSU_N] = {"FULL", "NO SYNTH", "NO DRUMS", "INPUTS ONLY"};   /* (HARMONY on: no
+                                                       * vocoder; the same four settings, harmoniser-spec.md §10a-2) */
         *c = VOC_AUDIO_ON ? C_HI : C_DIM;
-        return N[voc_setup % VSU_N];
+        return (hm_on ? NH : N)[voc_setup % VSU_N];
     }
     case MI_VINL:                                     /* each USB channel's destination (dim: AUDIO IN off; a track
                                                        * the SETUP leaves on: amber, not used) */
     case MI_VINR: {
-        static const char *const N[VR_N] = {"TRACK 3", "CARRIER", "T1", "T2", "OFF"};
+        static const char *const N[VR_N] = {"TRACK 3", "CARRIER", "T1", "T2", "OFF",
+#if SMK_HARM_BUILD
+                                            "HARMONY"
+#endif
+        };
         uint32_t r = (i == MI_VINL ? voc_inl : voc_inr) % VR_N;
-        *c = !VOC_AUDIO_ON ? C_DIM : (r == VR_T1 || r == VR_T2) && !(VSU_SKIP(voc_setup % VSU_N) >> (r - VR_T1) & 1u)
+        *c = !VOC_AUDIO_ON ? C_DIM : ((r == VR_T1 || r == VR_T2) && !(VSU_SKIP(voc_setup % VSU_N) >> (r - VR_T1) & 1u)) ||
+                                         (r == VR_T1 && hm_on) || (r == VR_HARM && !hm_on) || (r == VR_CARR && hm_on)
                                          ? C_AMB : C_HI;
         return N[r];
     }
@@ -371,6 +451,51 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_VBRM:                                     /* FIXED, FOLLOW (dim: no bridging: the same) */
         *c = VOC_AUDIO_ON && voc_bridge ? C_HI : C_DIM;
         return voc_brmode ? "FOLLOW" : "FIXED";
+#if SMK_HARM_BUILD
+    case MI_HON:                                      /* track 1 the harmoniser, or a synth */
+        *c = C_HI;
+        return hm_on ? "ON: T1" : "OFF";
+    case MI_HINT:                                     /* the keys: fixed intervals from C4, or from the sung note in the
+                                                       * song's key (dim: HARMONY off) */
+        *c = hm_on ? C_HI : C_DIM;
+        return hm_int ? "SCALE" : "FIXED";
+#endif
+    case MI_PC1: case MI_PC2: case MI_PC3: {          /* POLY CAP (§13w-2): the value, dimmed with why where it does
+                                                       * nothing (kept: it acts again when the engine or mode changes) */
+        static char b[14];
+        uint32_t k = i - MI_PC1, cp = hm_pcap[k];
+        const track_t *t = &trk[k];
+        int na = (k == 0u && hm_on) || VOC_TRK_AUDIO(t) || TRK_VMODE(t) != V_POLY;
+        *c = !cp || na || cp >= NVOICE || !(hm_on || (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW)) ? C_DIM : C_HI;
+        if (!cp)
+            return "OFF";
+        b[0] = (char)('0' + cp), b[1] = 0;
+        if (na)
+            str_cpy(b + 1, " N/A", 13);
+        else if (cp >= NVOICE)
+            str_cpy(b + 1, " NO EFFECT", 13);
+        return b;
+    }
+#if SMK_HARM_BUILD
+    case MI_LMONO:                                    /* the lanes mono while the stems stream (§13v-6) */
+        *c = hm_on ? C_HI : C_DIM;
+        return hm_lmono ? "WITH STEMS" : "OFF";
+    case MI_LT0: case MI_LT1: case MI_LT2: case MI_LT3:   /* a lane's voices may fade under load (dim: HARMONY off) */
+        *c = hm_on ? C_HI : C_DIM;
+        return (hm_thin >> (i - MI_LT0)) & 1u ? "ON" : "OFF";
+    case MI_LR0: case MI_LR1: case MI_LR2: case MI_LR3:   /* a lane's voices every sample, or once a pair */
+        *c = hm_on ? C_HI : C_DIM;
+        return (hm_lrate >> (i - MI_LR0)) & 1u ? "22K" : "44.1K";
+    case MI_HNOTE: {                                  /* the tracker's note (dim: it runs with INTERVALS SCALE only) */
+        static char b[6];
+        uint32_t nt = hm.tnote;
+        *c = hm_on && hm_int ? C_HI : C_DIM;
+        if (!hm_on || !hm_int || !nt)
+            return "--";
+        note_name(b, nt);
+        return b;
+    }
+#endif
     case MI_VGDEL: {                                  /* the external carrier's gate held after the notes, 0 .. 50 ms
                                                        * (dim: no channel to CARRIER) */
         static const char *const N[11] = {"0 MS", "5 MS", "10 MS", "15 MS", "20 MS", "25 MS", "30 MS", "35 MS",
@@ -381,7 +506,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_VMODE: {                                  /* track 3, the audio track: the input dry, or vocoded over the
                                                        * saws (dim: AUDIO IN off, track 3 its engine) */
         static const char *const N[VM_N] = {"AUDIO", "VOCODER"};
-        *c = VOC_AUDIO_ON ? C_HI : C_DIM;
+        *c = !VOC_AUDIO_ON ? C_DIM : hm_on ? C_AMB : C_HI;   /* (HARMONY on: AUDIO, locked) */
         return N[voc_mode % VM_N];
     }
     case MI_VCUT:                                     /* the carrier's low-pass, 0 .. 127 (dim: not vocoding) */
@@ -486,6 +611,12 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_SFILT:                                    /* the resampler's filter (44.1: none, dim) */
         *c = usb_layout != UL_STEREO && !(stem_rate & 1u) ? C_HI : C_DIM;
         return stem_light ? "LIGHT" : "FULL";
+    case MI_SPAIR: {                                  /* channels 5-6: the effects return, or a source in stereo (amber
+                                                       * outside SYNTHS+RET: not used there) */
+        static const char *const N[SP_N] = {"RET", "DRUMS", "T1", "T2", "T3"};
+        *c = usb_layout == UL_SYNTHS ? C_HI : C_AMB;
+        return N[smk_pair % SP_N];
+    }
     case MI_BUP:
     case MI_BDN: {                                    /* semitones of the pitch wheel up / down, the internal sounds */
         static char b[2][16];
@@ -590,6 +721,11 @@ UI_SMALL static void draw_menu(void)
            voc_inl * 1000289u + voc_inr * 1000291u + voc_gdel * 1000303u + voc_eatt * 1000313u + voc_erel * 1000333u + voc_saws * 1000357u +
            voc_brmode * 1000409u;
     sig += voc_trim[0] * 1000363u + voc_trim[1] * 1000367u;
+#ifdef SMK_HARM
+    sig += hm_on * 1000427u + hm_want * 1000429u + (uint32_t)hm.tnote * 1000433u +   /* (HARMONY, SUNG NOTE: 67ba07e left
+                                                         * them out, the screen stayed on OFF though the knob turned it) */
+           (uint32_t)(trk[0].p[P_SCALE] != 0) * 1000439u;
+#endif
     if (ui.menu == 1 && sec == MS_INPUT) {          /* (the meters move: a frame each time they do) */
         mtr_update();
         sig += (uint32_t)(mtr_lv[0] >> 1) * 1000373u + (uint32_t)(mtr_lv[1] >> 1) * 1000379u + mtr_pk[0] * 1000381u +
@@ -599,6 +735,23 @@ UI_SMALL static void draw_menu(void)
 #endif
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
+#endif
+#if BOARD_SMK37
+    if (ui.menu == 1) {                             /* (2026-11-12) every row of the section as it would be drawn: its
+                                                     * value, the value's colour and the guide lines. The list above is
+                                                     * kept by hand and twice missed new items (SETUP's four in
+                                                     * 2b96130, HARMONY in 67ba07e: the knob worked, the screen stayed),
+                                                     * this does not depend on it: whatever a row shows, a change of it
+                                                     * redraws the menu */
+        uint32_t k;
+        for (k = MS_FIRST[sec]; k < MS_FIRST[sec + 1u]; k++) {
+            uint16_t c = 0;
+            const char *v = mi_value(k, &c), *g0 = mi_guide(k, 0), *g1 = mi_guide(k, 1);
+            sig = str_hash(sig, v ? v : "") * 31u + c;
+            sig = str_hash(sig, g0 ? g0 : "");
+            sig = str_hash(sig, g1 ? g1 : "");
+        }
+    }
 #endif
     if (!ui.force && sig == ui.menu_sig)
         return;
@@ -721,9 +874,12 @@ UI_SMALL static void draw_menu(void)
                     cv_text(xv + 8, y + 30, &FONT_S, "RE-PLUG", C_AMB);   /* (main.c: a moment after the knob) */
                 else if (i == MI_SRATE || i == MI_SFILT
 #if SMK_UAC_IN_PROBE
-                         || i == MI_VINL || i == MI_VINR || i == MI_VCARR
+                         || i == MI_VINL || i == MI_VINR || i == MI_VCARR || i == MI_SPAIR || (i == MI_VMODE && hm_on)
+#ifdef SMK_HARM
+                         || (i == MI_LIMIT && hm_on && lim_classic)
 #endif
-                         ) {
+#endif
+                         ) {                    /* (STEREO PAIR and MODE's lock: their guides were set, never drawn) */
                     uint16_t gc = vc == C_HI ? C_GRAY : C_DIM;
                     cv_text(xv + 8, y + 16, &FONT_S, mi_guide(i, 0), gc);   /* (y + 30: a fourth row's second line
                                                          * inside the screen; at y + 34 it ran off the bottom) */
@@ -911,11 +1067,20 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         voc_setup = (uint8_t)(s > 0 ? (voc_setup + 1u < VSU_N ? voc_setup + 1u : voc_setup)
                                     : s < 0 ? (voc_setup ? voc_setup - 1u : 0u) : VSU_FULL);
         break;
-    case MI_VINL:                                      /* TRACK 3 .. OFF (stops at the ends); OCT+ back to TRACK 3 */
+    case MI_VINL:                                      /* TRACK 3, CARRIER, T1, T2, HARMONY, OFF (stops at the ends);
+                                                        * OCT+ back to TRACK 3 */
     case MI_VINR: {
+#if SMK_HARM_BUILD
+        static const uint8_t ORD[VR_N] = {VR_T3, VR_CARR, VR_T1, VR_T2, VR_HARM, VR_OFF};
+#else
+        static const uint8_t ORD[VR_N] = {VR_T3, VR_CARR, VR_T1, VR_T2, VR_OFF};
+#endif
         uint8_t *x = i == MI_VINL ? &voc_inl : &voc_inr;
-        uint32_t r = *x % VR_N;
-        *x = (uint8_t)(s > 0 ? (r + 1u < VR_N ? r + 1u : r) : s < 0 ? (r ? r - 1u : 0u) : VR_T3);
+        uint32_t r = *x % VR_N, k = 0;
+        while (k + 1u < VR_N && ORD[k] != r)
+            k++;
+        k = s > 0 ? (k + 1u < VR_N ? k + 1u : k) : s < 0 ? (k ? k - 1u : 0u) : 0u;
+        *x = ORD[k];
         break;
     }
     case MI_VTRL:                                      /* -18 .. +6 dB in 1 (stops at the ends); OCT+ back to 0 dB */
@@ -927,6 +1092,40 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_VBRM:                                      /* right FOLLOW, left FIXED; OCT+ toggles */
         voc_brmode = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_brmode);
         break;
+#if SMK_HARM_BUILD
+    case MI_HON:                                       /* right ON, left OFF; OCT+ toggles (fx.c: T1's notes released,
+                                                        * the harmoniser started afresh) */
+        hm_set(s > 0 ? 1u : s < 0 ? 0u : !hm_on);
+        if (hm_want)
+            fb_set(4u);                                /* (on: the FADER BANK screen on E, HARM, when the menu closes) */
+        break;
+    case MI_HINT:                                      /* right SCALE, left FIXED; OCT+ toggles */
+        hm_int = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !hm_int);
+        break;
+    case MI_HNOTE:                                     /* (a readout) */
+        break;
+#endif
+    case MI_PC1: case MI_PC2: case MI_PC3: {           /* right up, left down (OFF below 1); OCT+ back to OFF */
+        uint32_t k = i - MI_PC1;
+        int32_t v = s ? (int32_t)hm_pcap[k] + s : 0;
+        hm_pcap[k] = (uint8_t)(v < 0 ? 0 : v > (int32_t)HM_PCAP_MAX ? HM_PCAP_MAX : v);
+        break;
+    }
+#if SMK_HARM_BUILD
+    case MI_LMONO:                                     /* right ON, left OFF; OCT+ toggles */
+        hm_lmono = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !hm_lmono);
+        break;
+    case MI_LT0: case MI_LT1: case MI_LT2: case MI_LT3: {   /* right ON, left OFF; OCT+ toggles */
+        uint32_t b = 1u << (i - MI_LT0);
+        hm_thin = (uint8_t)(s > 0 ? hm_thin | b : s < 0 ? hm_thin & ~b : hm_thin ^ b);
+        break;
+    }
+    case MI_LR0: case MI_LR1: case MI_LR2: case MI_LR3: {   /* right 22K, left 44.1K; OCT+ toggles */
+        uint32_t b = 1u << (i - MI_LR0);
+        hm_lrate = (uint8_t)(s > 0 ? hm_lrate | b : s < 0 ? hm_lrate & ~b : hm_lrate ^ b);
+        break;
+    }
+#endif
     case MI_VGDEL: {                                   /* 0 .. 50 ms in 5 (stops at the ends); OCT+ back to 0 */
         int32_t v = s ? (int32_t)(voc_gdel % 11u) + s : 0;
         voc_gdel = (uint8_t)(v < 0 ? 0 : v > 10 ? 10 : v);
@@ -981,6 +1180,8 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     }
     case MI_VMODE:                                     /* AUDIO, VOCODER (stops at the ends); OCT+ round; faded */
+        if (hm_on)
+            break;                                     /* (HARMONY on: the vocoder off, MODE AUDIO, locked) */
         voc_mode = (uint8_t)(s > 0 ? (voc_mode + 1u < VM_N ? voc_mode + 1u : voc_mode) : s < 0 ? (voc_mode ? voc_mode - 1u : 0u)
                                    : (voc_mode + 1u) % VM_N);
         break;
@@ -1007,6 +1208,11 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_SRATE:                                     /* right 44.1, left 48; OCT+ toggles; re-plugged as LAYOUT */
         stem_rate = (uint8_t)(s > 0 ? (stem_rate < 3u ? stem_rate + 1u : 3u)   /* 48, 44.1, 48 / 16, 44.1 / 16 */
                              : s < 0 ? (stem_rate ? stem_rate - 1u : 0u) : (stem_rate + 1u) % 4u);
+        break;
+    case MI_SPAIR:                                     /* RET, DRUMS, T1, T2, T3 (stops at the ends); OCT+ back to RET;
+                                                        * at once (the DAW's channel names: at the next plug) */
+        smk_pair = (uint8_t)(s > 0 ? (smk_pair + 1u < SP_N ? smk_pair + 1u : smk_pair) : s < 0 ? (smk_pair ? smk_pair - 1u : 0u)
+                                   : SP_RET);
         break;
     case MI_SFILT:                                     /* right LIGHT, left FULL; OCT+ toggles; at once */
         stem_light = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !stem_light);

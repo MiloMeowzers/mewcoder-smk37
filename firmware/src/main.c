@@ -107,16 +107,16 @@ void fm1_timer5_irq(void)
 #if SMK_UAC_IN_PROBE
         if (uac_due)                            /* (5 kHz with the stems, as EP4: 2026-11-04, at 2 kHz ~0.9 % of the
                                                  * packets overran, two arriving inside one poll with the stems out) */
-            uin_rx();                           /* the playback probe: a packet a ms cannot wait for the render either
+            T5_FAR(uin_rx)();                           /* the playback probe: a packet a ms cannot wait for the render either
                                                  * (on the unit, polled only between renders, ~18 % were overrun);
                                                  * EP4's RX side and the ring's writer only, as uac_service */
 #endif
 #if UAC6
         if (uac_due)
-            uac_service();
+            T5_FAR(uac_service)();
 #elif FELUCCA_UAC
         if (usb_due)
-            uac_service();
+            T5_FAR(uac_service)();
 #endif
         t5_nested_ticks += fm1_ticks() - t0;
         return;
@@ -126,9 +126,9 @@ void fm1_timer5_irq(void)
 #if UAC6
     else if (uac_due) {
 #if SMK_UAC_IN_PROBE
-        uin_rx();                               /* (the audio in at the stems' 5 kHz too, before their packet) */
+        T5_FAR(uin_rx)();                               /* (the audio in at the stems' 5 kHz too, before their packet) */
 #endif
-        uac_service();                          /* (not nested: usb_poll does not run now, no interleaving) */
+        T5_FAR(uac_service)();                          /* (not nested: usb_poll does not run now, no interleaving) */
     }
 #endif
 #if FELUCCA_UART
@@ -210,8 +210,22 @@ static int replug_pending(void) { return 0; }   /* (the probe: no re-plug) */
 
 #if BOARD_SMK37
 /* the SMK-37 Pro's 4 faders, tracks 1..4 (4 = drums), by FADER BANK (ui_input.c smk_fbank): A level, B the
- * track's filter (P_TFLT: low-pass left, open in the middle, high-pass right), C reverb send, D delay send.
- * A fader takes over only once it moves (also after a bank change), so nothing jumps. */
+ * track's filter (P_TFLT: low-pass left, open in the middle, high-pass right), C reverb send, D delay send; with
+ * HARMONY on, E HARM (PITCH, FEEDBACK, VOICE IN, WET / DRY) and F SENDS (T2, T3, the drums into the harmoniser).
+ * PICKUP (2026-11-12): a fader acts only once it reaches the value its bank holds (within FB_HOT steps, or moving
+ * through it either way), so nothing jumps after a bank change; until then the screen shows it waiting. */
+#if SMK_VOC_LEAN && defined(SMK_HARM)
+#define SMK_HP_FADER(i, w, u) hp_fader((i), (w), (u))   /* (the HARMONY page up: it shows the fader, ui_hpage.c) */
+#else
+#define SMK_HP_FADER(i, w, u) 0
+#endif
+/* the LEVEL faders' law (harmoniser-spec.md §13b, signed off 2026-11-15): position 0 off, 1..100 -> -40..0 dB, 101..127
+ * -> 0..+2 dB, as a map from the fader to the value (a project's values, MIDI, the encoders: untouched). LEVEL is 0.5 dB a
+ * step (112 = 0 dB); the drums' level is linear (100 at the fader's 100): the same dB */
+static const uint8_t SMK_LVL_LAW[128] = {0,32,33,34,34,35,36,37,38,38,39,40,41,42,43,43,44,45,46,47,47,48,49,50,51,51,52,53,54,55,55,56,57,58,59,59,60,61,62,63,64,64,65,66,67,68,68,69,70,71,72,72,73,74,75,76,76,77,78,79,80,80,81,82,83,84,85,85,86,87,88,89,89,90,91,92,93,93,94,95,96,97,97,98,99,100,101,101,102,103,104,105,106,106,107,108,109,110,110,111,112,112,112,112,113,113,113,113,113,113,113,114,114,114,114,114,114,115,115,115,115,115,115,115,116,116,116,116
+};
+static const uint8_t SMK_DRL_LAW[128] = {0,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,4,4,4,4,4,4,5,5,5,5,6,6,6,6,7,7,7,8,8,8,9,9,10,10,11,11,12,13,13,13,14,15,16,16,17,18,19,20,21,21,22,24,25,27,27,28,30,32,33,33,35,38,40,42,42,45,47,50,53,53,56,60,63,67,71,71,75,79,84,89,89,94,100,100,100,100,106,106,106,106,106,106,106,112,112,112,112,112,112,119,119,119,119,119,119,119,126,126,126,126};
+#define SMK_LAW(f, drum) ((drum) ? SMK_DRL_LAW[(f) & 127u] : SMK_LVL_LAW[(f) & 127u])
 static void smk_faders(void)
 {
     static uint8_t last[4] = {0xFF, 0xFF, 0xFF, 0xFF};
@@ -220,22 +234,47 @@ static void smk_faders(void)
         smk_fbank_new = 1;                                /* each waits to move again */
         return;
     }
-    if (smk_fbank_new) {                                  /* a new bank: wait for each fader to move */
+    if (smk_fbank_new) {                                  /* a new bank: each fader waits to pick up */
         smk_fbank_new = 0;
-        for (i = 0; i < 4u; i++)
-            last[i] = 0xFF;
+        smk_flive = 0;
+        ui.force = 1;
     }
     for (i = 0; i < 4u && i < NTRK; i++) {
         uint32_t v = fm1_in.fader[i];
         int16_t *pv;
         if (last[i] == 0xFF || fm1_in.frames < 200u) {   /* (the first readings settle) */
             last[i] = (uint8_t)v;
+            smk_fpos[i] = (uint8_t)(v > 127u ? 127u : v);
             continue;
         }
         if (v == last[i])
             continue;
-        last[i] = (uint8_t)v;
-        switch (smk_fbank) {
+        {   /* PICKUP: not yet live, it acts once it is near the bank's value or has passed it */
+            int16_t *tv;
+            const param_desc_t *d = fb_param(smk_fbank % FB_N, i, &tv);
+            int32_t t = clamp(*tv - d->min, 0, 127), p = last[i], q = (int32_t)(v > 127u ? 127u : v);
+            last[i] = (uint8_t)v;
+            smk_fpos[i] = (uint8_t)q;
+            if (smk_fbank % FB_N == 0u)                   /* (LEVEL: its law, so the pickup compares values) */
+                p = SMK_LAW((uint32_t)p, i == TRK_DRUM), q = SMK_LAW((uint32_t)q, i == TRK_DRUM);
+            if (d->max == d->min) {                       /* (nothing to set: HARMONY's T1 on B, D, F) */
+                if (!SMK_HP_FADER(i, 0, 0))
+                    fb_touch();
+                continue;
+            }
+            if (!((smk_flive >> i) & 1u)) {
+                if ((q - t <= FB_HOT && t - q <= FB_HOT) || (p - t) * (q - t) < 0)
+                    smk_flive |= (uint8_t)(1u << i);
+                else {
+                    if (!SMK_HP_FADER(i, 1, q < t))
+                        fb_touch();                       /* (the screen up: its arrow shows the way; the HARMONY page:
+                                                           * its header says which way) */
+                    ui.force = 1;
+                    continue;
+                }
+            }
+        }
+        switch (smk_fbank % FB_N) {
         case 1:
 #if SMK_UAC_IN_PROBE
             if (VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW) {
@@ -244,9 +283,10 @@ static void smk_faders(void)
                 break;
             }
 #endif
-            {   /* a dead zone in the middle (+-3): a fader resting there is the filter off, not a step of it running */
+            {   /* a dead zone in the middle (+-6, harmoniser-spec.md §13t; was +-3): a fader resting there is the filter
+                 * off, not a step of it running */
                 int32_t f = (int32_t)v - 64;
-                trk[i].p[P_TFLT] = (int16_t)(f >= -3 && f <= 3 ? 0 : f);
+                trk[i].p[P_TFLT] = (int16_t)(f >= -6 && f <= 6 ? 0 : f);
             }
             break;
         case 2:
@@ -257,11 +297,36 @@ static void smk_faders(void)
             pv = i == TRK_DRUM ? &song.g[G_DRDLY] : &trk[i].p[P_DLY];
             *pv = (int16_t)v;
             break;
+#ifdef SMK_HARM
+        case 4:                                       /* E, HARM: PITCH (its dead zone, as the filter's), FEEDBACK,
+                                                       * VOICE IN, WET / DRY (smk_harm.h) */
+            if (i == 0u) {
+                int32_t f = (int32_t)v - 64;
+                hm_pitch = (int16_t)(f >= -3 && f <= 3 ? 0 : f);
+            } else if (i == 1u) {
+                hm_fb = (int16_t)(v > 127u ? 127u : v);
+            } else if (i == 2u) {
+                hm_send[0] = (uint8_t)(v > 127u ? 127u : v);
+            } else {                                  /* (column 4: LANE RATE, 64 and up 22K: every lane's setting,
+                                                       * §13x; WET / DRY is F's T1 column, §13p) */
+                fb_lrate_set(v);
+            }
+            break;
+        case 5:                                       /* F, MIX: each track's dry / harmony balance (T1: hm_wd) */
+            if (i)
+                hm_send[i & 3u] = (uint8_t)(v > 127u ? 127u : v);
+            else
+                hm_wd = (int16_t)(v > 127u ? 127u : v);
+            break;
+#endif
         default:
             pv = i == TRK_DRUM ? &song.g[G_DRLVL] : &trk[i].p[P_LEVEL];
-            *pv = (int16_t)v;
+            *pv = (int16_t)SMK_LAW(v > 127u ? 127u : v, i == TRK_DRUM);   /* (§13b's law) */
             break;
         }
+        if (!SMK_HP_FADER(i, 0, 0))
+            fb_touch();                               /* (the FADER BANK screen up: what the fader set is seen; the
+                                                       * HARMONY page up: it stays, its header shows the value) */
         ui.force = 1;
     }
 }
@@ -491,7 +556,7 @@ UI_SMALL static void fm1_main(void)
                     }
                     shown = a;
                 }
-                song.master_q12 = smk_master_q12(k10, lim_classic);   /* (HOME menu > AUDIO > LIMITER: its knob law, fx.c) */
+                song.master_q12 = smk_master_q12(k10, LIM_CLS);   /* (HOME menu > AUDIO > LIMITER: its knob law, fx.c; HARMONY: SOFT) */
 #else
                 song.master_q12 = (k10 * k10) >> 8;            /* 0 .. ~4096 */
 #endif

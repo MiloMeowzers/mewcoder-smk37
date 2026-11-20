@@ -200,6 +200,17 @@ static void con_status(void)
     con_kx("sp", stack_sp());                           /* where the main loop runs now: which of the two regions */
     con_kv("audio_max_us", (int32_t)felucca_dbg.max_us);
     con_kv("voices_shed", (int32_t)shed_count);
+#if BOARD_SMK37
+    con_kv("shed_t1", (int32_t)shed_trk[0]);            /* (each part's, harmoniser-spec.md §13t) */
+    con_kv("shed_t2", (int32_t)shed_trk[1]);
+    con_kv("shed_t3", (int32_t)shed_trk[2]);
+    con_kv("fm6_ops_max", (int32_t)fm6_pr.ops_max);     /* (the probe, §13v-2: FM6's worst half since read; note-ons,
+                                                         * full patch rebuilds since read) */
+    con_kv("fm6_vox_max", (int32_t)fm6_pr.vox_max);
+    con_kv("fm6_ons", (int32_t)fm6_pr.ons);
+    con_kv("fm6_syncs", (int32_t)fm6_pr.syncs);
+    fm6_pr.ops_max = fm6_pr.vox_max = fm6_pr.ons = fm6_pr.syncs = 0;
+#endif
     con_kv("voices_given_up", (int32_t)voice_kills);
     con_kv("track", (int32_t)song.sel + 1);
     con_kv("batt_raw", song.batt_raw);
@@ -250,6 +261,8 @@ static void con_status(void)
     con_kv("uac6_frames", (int32_t)uac.frames);
     con_kv("uac6_missed", (int32_t)uac.missed);          /* IN tokens that found no packet queued */
     con_kv("uac6_stalls", (int32_t)uac.stalls);
+    con_kv("uac6_recentres", (int32_t)uac.recentres);   /* the ring ran full: the reader moved back (§13d) */
+    con_kv("uac6_skips", (int32_t)uac.skips);           /* frames a queued packet sat untaken (§13k) */
     con_kv("uac6_rate_sets", (int32_t)uac.rate_sets);
 #endif
 #if SMK_UAC_IN_PROBE
@@ -481,6 +494,177 @@ static void con_bled(const char *p)
 }
 #endif
 
+#ifdef SMK_HARM
+/* the probe's cache commands (smk37-devtools harmoniser-spec.md §13v-1; the AC79 SDK's cache_way_config and
+ * flush_all_dcache, cpu.a cache.c.o, read as LLVM IR): the data cache's ways 0-6 freed as RAM (0x1F28000, 28 KB), way 7
+ * kept; the instruction cache untouched. CACHE_CON 0x1EEE008 (b14 idle, b8 / b9 on), 0x1EEE00C the data ways (three
+ * 8-bit masks), 0x1EEE010 the instruction ways. Undone by a power cycle */
+static void cache_console(const char *p)               /* (read-only since Build 1.7: the registers) */
+{
+    uint32_t con, dw, iw;
+    (void)p;
+    fm1_cache_regs(&con, &dw, &iw);
+    con_puts("cache con ");
+    con_hex(con, 8);
+    con_puts(" dways ");
+    con_hex(dw, 8);
+    con_puts(" iways ");
+    con_hex(iw, 8);
+    con_putc(13);
+    con_putc(10);
+}
+#endif
+#ifdef SMK_HARM
+/* the vocoder build: the harmoniser (smk_harm.h). "hprobe" (or "harm"): its state, the tracker's last period as Hz,
+ * frames, voiced frames, the input's peak (as the probe printed them: the scratchpad's track.ps1 reads that part), then
+ * the sung note, the voices' notes, the output's peak, REPEAT; the peaks cleared. "hprobe on|off" = HOME > HARMONY */
+static void hp_console(const char *p)
+{
+    int on;
+    if (con_word(&p, "probe")) {                        /* harm probe eq | vox | off (§13v-3; not kept) */
+        hm_probe = (uint8_t)(con_word(&p, "eq") ? 1u : con_word(&p, "vox") ? 2u : 0u);
+    }
+    on = con_word(&p, "on") ? 1 : con_word(&p, "off") ? 0 : -1;
+    uint32_t per = hm.per, f10 = per ? (uint32_t)(5512u * 2560u / per) : 0u, v;   /* deci-Hz at 5.5125 kHz (44100 / 8) */
+    if (on >= 0)
+        hm_set((uint32_t)on);
+    con_puts("hprobe ");
+    con_puts(hm_on ? "on" : "off");
+    con_puts(" f0 ");
+    con_dec((int32_t)(f10 / 10u));
+    con_putc('.');
+    con_dec((int32_t)(f10 % 10u));
+    con_puts(" Hz frames ");
+    con_dec((int32_t)hm.frames);
+    con_puts(" voiced ");
+    con_dec((int32_t)hm.voiced);
+    con_puts(" peak ");
+    con_dec(hm.pk_in);
+    con_puts(" | sung ");
+    con_dec(hm.tnote);
+    con_puts(" notes");
+    for (v = 0; v < 3u; v++) {
+        con_putc(' ');
+        con_dec(hm.note[v]);
+    }
+    con_puts(" ratio x1000");                         /* (each voice's, as it plays: (1 - dinc / 32768)) */
+    for (v = 0; v < 3u; v++) {
+        con_putc(' ');
+        con_dec(1000 - hm.dinc[v] * 1000 / 32768);
+    }
+    con_puts(" pitch ");
+    con_dec(hm_pitch);
+    con_puts(" fb ");
+    con_dec(hm_fb);
+    con_puts(" wd ");
+    con_dec(hm_wd);
+    con_puts(" out ");
+    con_dec(hm.pk_out);
+    con_puts(hm.rep ? " repeat" : "");
+    con_putc(13);
+    con_putc(10);
+    {   /* the HARMONY page's settings (2026-11-13: "nothing seems to give control": each one that can silence the
+         * harmony or take it from the keys, on one line) */
+        uint32_t v;
+        con_puts("  page: sel T");
+        con_dec((int32_t)song.sel + 1);
+        con_puts(" ctl ");
+        con_dec(hs.ctl);
+        con_puts(" vsel ");
+        con_dec(hs.vsel);
+        con_puts(" byp ");
+        con_dec(hs.byp);
+        con_puts(" mute ");
+        con_dec(hs.mute);
+        con_puts(" inl ");
+        con_dec(hs.inl);
+        con_puts(" dry ");
+        con_dec(hs.dry);
+        con_puts(" fbl ");
+        con_dec(hs.fbl);
+        con_puts(" eq ");
+        con_dec(hs.low);
+        con_puts("/");
+        con_dec(hs.high);
+        con_puts(" | fn/lv/mic/on");
+        for (v = 0; v < 3u; v++) {
+            con_puts(" ");
+            con_dec(hs.fn[v]);
+            con_puts("/");
+            con_dec(hs.lv[v]);
+            con_puts("/");
+            con_dec(hs.mic[v]);
+            con_puts("/");
+            con_dec(hm.on[v]);
+        }
+        con_puts(" | pads ");
+        con_dec(hm_pad);
+        con_puts(" voice-in ");
+        con_dec(hm_send[0]);
+        con_puts((hm_lrate & 15u) == 15u ? " rate 22K" : hm_lrate & 15u ? " rate mixed" : " rate 44.1");   /* (LANE
+                                                         * RATE: §13x) */
+        con_putc(13);
+        con_putc(10);
+        con_puts("  voices (§13n, cleared): steals ");      /* (a held voice taken, faded; notes that waited; let go
+                                                         * waiting; now: released voices open, notes waiting) */
+        con_dec((int32_t)hv.steals);
+        con_puts(" waits ");
+        con_dec((int32_t)hv.waits);
+        con_puts(" drops ");
+        con_dec((int32_t)hv.drops);
+        con_puts(" | now hold/rel ");
+        for (v = 0; v < 3u; v++) {
+            con_dec(hv.hold[v]);
+            con_puts(hm.note[v] && !hv.hold[v] ? "r " : " ");
+        }
+        con_puts("waiting ");
+        con_dec(hv.wc);
+        hv.steals = hv.waits = hv.drops = 0;
+        con_putc(13);
+        con_putc(10);
+        con_puts("  lanes (§13v): thin ");                  /* (LANE THIN, LANE RATE as masks, bit k lane k; mono now;
+                                                         * thinned voices per lane; thinned / back since read) */
+        con_hex(hm_thin, 1);
+        con_puts(" rate22 ");
+        con_hex(hm_lrate, 1);
+        con_puts(hm_lmono ? " mono-with-stems on" : " mono-with-stems off");
+        con_puts(" now ");
+        con_hex(hm_lmask, 1);
+        con_puts(" | thinned");
+        for (v = 0; v < HL_N; v++) {
+            con_putc(' ');
+            con_dec(hm_ln[v].th[0] + hm_ln[v].th[1] + hm_ln[v].th[2]);
+        }
+        con_puts(" | thins ");
+        con_dec((int32_t)hv.thins);
+        con_puts(" back ");
+        con_dec((int32_t)hv.unthins);
+        con_puts(" probe ");
+        con_puts(hm_probe == 1u ? "eq-off" : hm_probe == 2u ? "vox-off" : "off");
+        hv.thins = hv.unthins = 0;
+        con_putc(13);
+        con_putc(10);
+        con_puts("  lanes in/out/write (int16 peaks), bank F:");   /* (§12: VOICE, T2, T3, DRUMS; cleared) */
+        for (v = 0; v < 4u; v++) {
+            con_puts(v == 0 ? " v " : v == 1 ? " t2 " : v == 2 ? " t3 " : " d ");
+            con_dec(hm.lpi[v]);
+            con_puts("/");
+            con_dec(hm.lpo[v]);
+            con_puts("/");
+            con_dec(hm.lpf[v]);
+            con_puts(" f");
+            con_dec(hm_send[v]);
+            if (hm_ln[v].quiet >= HM_QBLK)
+                con_puts(" zz");                        /* (§13f: asleep, silent) */
+            hm.lpi[v] = hm.lpo[v] = hm.lpf[v] = 0;
+        }
+        con_putc(13);
+        con_putc(10);
+    }
+    hm.pk_in = hm.pk_out = 0;
+}
+#endif
+
 static void con_exec(const char *p)
 {
     if (con_word(&p, "help") || con_word(&p, "?"))
@@ -493,6 +677,16 @@ static void con_exec(const char *p)
         con_crash();
     else if (con_word(&p, "params"))
         con_params();
+#if UAC6
+    else if (con_word(&p, "dither")) {                   /* dither 0 | 1: the 16-bit stems' TPDF dither (usb.c, §13j's
+                                                         * A/B; not saved, off at power-on) */
+        int ok;
+        uint32_t a = con_num(&p, &ok);
+        if (ok)
+            stem_dither = (uint8_t)(a != 0u);
+        con_kv("stem_dither", stem_dither);
+    }
+#endif
 #if SMK_TIMING
     else if (con_word(&p, "timing"))
         con_timing();
@@ -528,6 +722,12 @@ static void con_exec(const char *p)
         con_leds();
     else if (con_word(&p, "bled"))
         con_bled(p);
+#endif
+#ifdef SMK_HARM
+    else if (con_word(&p, "hprobe") || con_word(&p, "harm"))
+        hp_console(p);
+    else if (con_word(&p, "cache"))
+        cache_console(p);
 #endif
     else if (con_word(&p, "memr"))
         con_memr(p);

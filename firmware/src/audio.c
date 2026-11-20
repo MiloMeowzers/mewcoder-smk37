@@ -22,7 +22,11 @@ struct felucca_dbg {
 static volatile uint32_t audio_halves, audio_max_us;
 static volatile uint32_t t5_nested_ticks;              /* TIMER4 ticks TIMER5 spent nested in this ISR (main.c) */
 #define SCOPE_N 512u
+#if SMK_VOC_LEAN
+static int16_t scope_buf[SCOPE_N];      /* left (graph_scope; the vocoder build has no visualiser: no right channel) */
+#else
 static int16_t scope_buf[SCOPE_N], scope_bufr[SCOPE_N];   /* left, right (the visualiser): the mix at full level */
+#endif
 static uint32_t scope_w;
 
 static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 -> 24 bit */
@@ -48,7 +52,9 @@ static void mix_done(int32_t *out, uint32_t n)          /* fx.c: the block's tai
     for (i = 0; i < n; i++) {
         if (i & 1u)
         {
+#if !SMK_VOC_LEAN
             scope_bufr[scope_w & (SCOPE_N - 1u)] = vis_tap[2u * i + 1u];   /* (fx.c: MASTER all the way up) */
+#endif
             scope_buf[scope_w++ & (SCOPE_N - 1u)] = vis_tap[2u * i];
         }
         out[2u * i] <<= OUT_SHIFT;
@@ -74,7 +80,10 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         int32_t *o = &abuf[half * HALF_WORDS];
         if (shed_req) {
             shed_req = 0;
-            shed_voice();
+#ifdef SMK_HARM
+            if (!hm_thin_one())                         /* (a lane voice thinned first, LANE THIN: §13v-5) */
+#endif
+                shed_voice();
         }
 #if FELUCCA_UAC
         uac_render_start();
@@ -107,8 +116,28 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         }
         if (us > audio_max_us)
             audio_max_us = us;
+#if BOARD_SMK37
+        if (fm6_pr.ops > fm6_pr.ops_max)                /* (the probe: FM6's worst half, §13v-2) */
+            fm6_pr.ops_max = fm6_pr.ops;
+        if (fm6_pr.vox > fm6_pr.vox_max)
+            fm6_pr.vox_max = fm6_pr.vox;
+        fm6_pr.ops = fm6_pr.vox = 0;
+#endif
         if ((shed_over & 3u) == 3u)
             shed_req = 1;                               /* two in a row */
+#ifdef SMK_HARM
+        {   /* (§13w-1, 1.7.1: ~2 s with no half over 85 %, the line that thins: a thinned lane voice back, one at a
+             * time; a busy half starts the count again. 1.7's 75 % sat at a busy scene's own mean: held voices never
+             * came back) */
+            static uint16_t calm;
+            uint32_t all = fm1_ticks() - t0;
+            calm = all / FM1_TICKS_PER_US * 100u <= (HALF_FRAMES * 1000000u / FS) * 85u ? (uint16_t)(calm < 65535u ? calm + 1u : 65535u) : 0u;
+            if (calm >= 345u) {                         /* (345 halves of 5.8 ms: 2 s) */
+                calm = 0;
+                hm_unthin_one();
+            }
+        }
+#endif
         song.cpu_q8 = (song.cpu_q8 * 15u + (us * 256u) / (HALF_FRAMES * 1000000u / FS)) / 16u;
         if (fm1_audio_free_half() != half)
             felucca_dbg.late++;                         /* the DMA moved on while we rendered */

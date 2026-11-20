@@ -109,6 +109,7 @@ static void vis_select(int32_t s);
 static void vp_input(uint32_t *pressed, uint32_t *home);
 static void vp_leds(void);
 static uint32_t vp_hits;                 /* the pads hit while it was up (ui_input.c) */
+static uint8_t vis_pg;                   /* which page is up there: 0 the vocoder's, 1 HARMONY's (ui_hpage.c) */
 #else
 #include "ui_vis.c"           /* the full-screen visualiser (HOME on HOME, 2.4) */
 #endif
@@ -133,6 +134,9 @@ static uint32_t vp_hits;                 /* the pads hit while it was up (ui_inp
 #endif
 #if FELUCCA_FLASH
 #include "fm1_flash.h"
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE           /* (the vocoder build's probe only: FM-1 byte-identical) */
+#include "fm1_cache.h"       /* SMK-37 probe: the caches' ways (harmoniser-spec.md §13v-1) */
+#endif
 static uint8_t flash_ok;                 /* JEDEC id matched at boot (persist_boot) */
 static int st_read(uint32_t off, void *dst, uint32_t n)   /* 256-byte IRQ-off windows: audio keeps up */
 {

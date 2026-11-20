@@ -10,7 +10,26 @@
 /* The LED picture is built off-line and copied one byte per column: clearing
  * and relighting would let the 10 kHz scan catch the dark gap and flicker. */
 #if BOARD_SMK37
-static uint8_t smk_fbank, smk_fbank_new;           /* FADER BANK: 0 level, 1 filter, 2 reverb, 3 delay (main.c smk_faders) */
+static uint8_t smk_fbank, smk_fbank_new;           /* FADER BANK: 0 level, 1 filter, 2 reverb, 3 delay, 4 the HARM sends
+                                                     * (HARMONY on: ui_fbank.c FB_N) (main.c smk_faders) */
+#ifdef SMK_HARM
+/* (hm_rep_t0, hm_rep_held, hm_rep_shown: smk_harm.h) */
+#endif
+static uint8_t fb_pin;                             /* (2026-11-12, the owner: "a way to keep the fader ui toggled on")
+                                                    * FADER BANK held ~0.6 s: the screen stays up (no time-out) until
+                                                    * held again, or PATCH / KNOB BANK close it */
+/* PICKUP (2026-11-12, the owner): after a bank change a fader acts only once it reaches what the bank holds (within
+ * FB_HOT steps, or passing through it either way); main.c smk_faders. Each fader's place (0 .. 127) and the picked-up
+ * ones (a bit each), for the screen (ui_fbank.c: a box each, an arrow while it waits) */
+#define FB_HOT 3
+static uint8_t smk_fpos[4], smk_flive;
+#define SMK_FB_STATE 1                             /* (ui_fbank.c: these are here; a test of it alone declares its own) */
+/* the banks: A .. D, and E (HARM) and F (SENDS) while HARMONY is on */
+#if SMK_UAC_IN_PROBE && SMK_HARM_BUILD
+#define FB_N ((hm_on || hm_want) ? 6u : 4u)     /* (HARMONY: E HARM, F SENDS; as asked, before the block takes it) */
+#else
+#define FB_N 4u
+#endif
 static uint8_t pad_steps;                          /* the pads on the PLAY layer: 0 DRUM KIT (the default), 1 STEPS;
                                                     * KNOB BANK + FADER BANK (smk_input.h, seq.c pad_drum); not kept */
 /* SMK-37 Pro: one flag per id. Ids 0..18 are the button LEDs (smk_input.h), the note keys (no LEDs of
@@ -301,8 +320,13 @@ UI_SMALL static void ui_leds(void)
     for (c = 0; c < SMK_NLED; c++)                 /* the buttons: on / off (no dim layers) */
         fm1_led[c] = nl[c];
     smk_pad_piano = ui.layer == LY_SCALE;          /* SCALE held: the pads are a little piano (smk_input.h) */
-    fm1_led[SMK_BTN_FADER_BANK] = fb_shown() || ly_lock == LY_FX;   /* FADER BANK lit while its screen is up (one bank
-                                                    * screen at a time), or while it holds the FX layer open */
+    fm1_led[SMK_BTN_FADER_BANK] = fb_shown() || ly_lock == LY_FX;   /* FADER BANK lit while its screen is up, or while
+                                                    * it holds the FX layer open */
+#ifdef SMK_HARM
+    if (hm_on && (TSEL == &trk[0] || (VP_SHOWN() && vis_pg)))
+        fm1_led[panel.btn[B_LFO]] = hm_rep_shown();   /* NOTE REPEAT: REPEAT held (steady) or latched (flashing); on
+                                                     * the HARMONY page whatever track is selected */
+#endif
     fm1_led[SMK_BTN_KNOB_BANK] = pick_pin || (int32_t)(fm1_ms - pick_k4_until) < 0;   /* KNOB BANK: picker pinned, PRESETS turning */
     smk_pad_pick = (uint16_t)(pick_shown() || VP_SHOWN() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
     smk_pad_grid = (uint8_t)padgrid_on();          /* (steps and tiles: reading order) */
@@ -1340,7 +1364,7 @@ UI_SMALL static void ui_input(void)
         if (pick_shown())
             pick_turn(d);
         else if (fb_shown())                              /* the FADER BANK screen: the banks */
-            fb_set(smk_fbank + (d > 0 ? 1u : 3u));
+            fb_set(smk_fbank + (d > 0 ? 1u : FB_N - 1u));
         else
         if (ui.layer == LY_STEP || smk_pad_steps) {      /* (the pads' STEPS too) */
             uint32_t pages = (trk_len(TSEL) + 15u) / 16u;
@@ -1385,15 +1409,26 @@ UI_SMALL static void ui_input(void)
             ui.force = 1;
         }
     }
-    if (pressed & 1u << SMK_BTN_FADER_BANK) {                   /* FADER BANK: its screen; pressed again the next bank */
-        pick_close();                                           /* (the pad picker goes: one screen at a time) */
-        fb_set(smk_fbank + (fb_shown() ? 1u : 0u));
+    {   /* FADER BANK (2026-11-13): a tap opens its screen, a tap on the open screen closes it (on release: KNOB BANK +
+         * FADER BANK, the pads' bank, is taken first); < > or SELECT step the banks; no time-out */
+        static uint8_t fb_was, fb_dn;                           /* the screen was up at the press; a press in hand */
+        uint32_t fbb = 1u << SMK_BTN_FADER_BANK;
+        if (pressed & fbb) {
+            pick_close();                                       /* (the pad picker goes: one screen at a time) */
+            fb_was = (uint8_t)fb_shown(), fb_dn = 1;
+            if (!fb_was)
+                fb_set(smk_fbank);                              /* (up at once) */
+        } else if (fb_dn && !(fm1_in.buttons & fbb)) {
+            if (fb_was && fb_shown())
+                fb_close();                                     /* (a tap on the open screen: it goes) */
+            fb_dn = 0;
+        }
     }
-    fb_expire();                                                /* (it closes by itself) */
+    fb_expire();                                                /* (another screen: it goes) */
     if (fb_shown()) {                                           /* SELECT (K2, or K6) turns the bank there */
         int32_t t = panel_enc(EN_SELECT);
         if (t)
-            fb_set(smk_fbank + (t > 0 ? 1u : 3u));
+            fb_set(smk_fbank + (t > 0 ? 1u : FB_N - 1u));
     }
 #endif
     uint32_t home = btn_hold(&ui.home_t0, B_HOME, now, 1);
@@ -1604,12 +1639,36 @@ UI_SMALL static void ui_input(void)
             open_family(FAM_ENV);
             break;
         case B_LFO:
+#ifdef SMK_HARM
+            if (hm_on && (TSEL == &trk[0] || (VP_SHOWN() && vis_pg))) {   /* HARMONY, T1 selected or its page up:
+                                                         * NOTE REPEAT is REPEAT (the memory
+                                                         * plays round, nothing written: smk_harm.h); a tap latches,
+                                                         * held longer it springs back when let go */
+                hm.rep = (uint8_t)!hm.rep;
+                hm_rep_t0 = fm1_ms, hm_rep_held = 1;   /* (ms: "now" here is fm1_ticks, 67ba07e took any press
+                                                         * for a hold and let REPEAT go at once) */
+                ui_message(hm.rep ? "REPEAT ON" : "REPEAT OFF");
+                break;
+            }
+#endif
             open_family(FAM_LFO);
             break;
         default:
             break;
         }
     }
+#ifdef SMK_HARM
+    if (hm_rep_held && !((fm1_in.buttons >> panel.btn[B_LFO]) & 1u)) {   /* NOTE REPEAT let go: held over 400 ms,
+                                                         * momentary (back as it was) */
+        hm_rep_held = 0;
+        if (fm1_ms - hm_rep_t0 > 400u && hm_on) {
+            hm.rep = (uint8_t)!hm.rep;
+            ui_message(hm.rep ? "REPEAT ON" : "REPEAT OFF");
+        }
+    }
+    if (!hm_on)
+        hm.rep = 0;
+#endif
     if (song.seq_mode && cur_page()->scope == SC_STEP && !ui.sheet)
         seq_entry(notes);                                 /* (and the MIDI keyboard's: midi_entry) */
 

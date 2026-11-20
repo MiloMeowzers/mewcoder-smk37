@@ -89,7 +89,7 @@ run "live UI: pages, layers (punch, steps, erase, roll, key, mix), holds, drums,
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/pick_test" tests/pick_test.c -lm
 run "SMK-37 Pro pad sound picker: pages by kind, pads load, < >, drum kits" "$OUT/pick_test" "$OUT"
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/fbank_test" tests/fbank_test.c -lm
-run "SMK-37 Pro FADER BANK screen: banks wrap, what each fader sets, closes by itself" "$OUT/fbank_test" "$OUT"
+run "SMK-37 Pro FADER BANK screen: banks wrap, what each fader sets, stays until closed (no time-out)" "$OUT/fbank_test" "$OUT"
 $CC -O2 -w -Ibuild/gen -Ifirmware/src -Ifirmware/hal -o "$OUT/k4led_test" tests/k4led_test.c -lm
 run "SMK-37 Pro: KNOB BANK lit on a PRESETS detent; which modes are a grid" "$OUT/k4led_test" "$OUT"
 $CC -O2 -w -Ifirmware/hal -o "$OUT/padgrid_test" tests/padgrid_test.c
@@ -238,6 +238,8 @@ $CC -DT_CDC=1 -DT_STEMS=1 -DT_UIN=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems
 run "SMK-37 playback input with the real stems (the vocoder build): descriptors, SYNTHS+RET, the monitor" "$OUT/uac6_test_stems_uin"
 $CC -o "$OUT/smk_vocoder_test" tests/smk_vocoder_test.c -lm
 run "SMK-37 vocoder: the VSM201's 20 bands, vocoding (analysis a block ahead), LEVEL, DRY, HF, VOICE (its detector), BRIDGE, BRIDGE TONE, BRIDGE MODE FOLLOW, NORMAL, the AGC, the track" "$OUT/smk_vocoder_test"
+$CC -Ibuild/gen -o "$OUT/smk_harm_test" tests/smk_harm_test.c -lm
+run "SMK-37 harmoniser (Stage 1a, 1b): the voices' pitch, PITCH, WET / DRY, the fades, feedback dies away (SAFE), REPEAT, the tracker, SCALE, the sends; 1a's sound at the page's defaults (bit for bit), MICRO, SHARP / FLAT, LEVEL, the mutes, DRY, IN / OUT, INPUT LEVEL, MANUAL, K+M, the pads, the feedback EQ, SAFE with the EQ, H949" "$OUT/smk_harm_test"
 $CC -DT_CDC=0 -DT_STEMS=1 -DHALF_FRAMES=$HALF -o "$OUT/uac6_test_stems" tests/uac6_test.c -lm
 run "SMK-37 stems, SYNTHS+RET: descriptors, 44.1 -> 48 kHz x 6, the ring and packets, levels" "$OUT/uac6_test_stems"
 $CC -o "$OUT/smk_tpunch_test" tests/smk_tpunch_test.c -lm

@@ -5,7 +5,7 @@ Everything SMK-37-specific sits behind `BOARD_SMK37`; the FM-1 build is unchange
 
 The SMK-37 board layer (input, screen, pad LEDs, flash map, update path, DAW mode) is M. Geisler's
 ([genkigenki/sloop-fm1](https://github.com/genkigenki/sloop-fm1), branch `smk37`; isod89/sloop-fm1#112), ported with
-the [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) kit; this build carries it to SLOOP 2.8.1.
+the [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) kit; this build carries it to SLOOP 2.8.4.
 
 > Unofficial firmware for the SMK-37, not affiliated with or endorsed by M-Vave. No warranty: install at your own
 > risk and read [Safety](#safety) first.
@@ -16,7 +16,7 @@ the [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) kit; this build c
 [Install](#install)) · [Web editor](https://milomeowzers.github.io/sloop-smk37/elite/webapp/editor/) ·
 [Releases](https://github.com/MiloMeowzers/sloop-smk37/releases)
 
-All of SLOOP 2.8.1 (four tracks, the sequencer, the 27 punch-in effects, the web editor), on a keyboard with 37 keys,
+All of SLOOP 2.8.4 (four tracks, the sequencer, the 27 punch-in effects, the web editor), on a keyboard with 37 keys,
 16 pads, faders and wheels, plus:
 
 | | What | Where |
@@ -98,7 +98,7 @@ update mode (UBOOT).
 | KNOB 3 | dial 3 on screen (yellow) | K7 | dial 3 |
 | KNOB 4 | dial 4 on screen (orange) | K8 | dial 4 |
 | — | — | KNOB LAYOUT = SMK | HOME menu > SCREEN > KNOB LAYOUT (K7): K1–K4 the dials 1–4, K5 master volume, K6 SELECT, K7 PRESETS, K8 ALGORITHM (track); FM-1 (default) as above |
-| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass), C reverb, D delay; a fader takes over once moved |
+| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass; open across ±6 steps of the centre), C reverb, D delay (the harmoniser build with HARMONY on: also E HARM: PITCH, FEEDBACK, VOICE IN, LANE RATE; F LANE: each track's dry / harmony MIX). **PICKUP:** after a bank change a fader acts only once it reaches the value the bank holds (within 3 steps, or passing through it either way), so nothing jumps; until then the FADER BANK screen shows it waiting, with an arrow the way to go |
 | — (no wheels used by SLOOP) | — | PITCH wheel | pitch bend, selected synth track: HOME menu > PLAY > BEND UP (K6) / BEND DOWN (K7), OFF, 1, 2, 3, 4, 5, 7, 12 semitones each; default 7 / 7 |
 | — | — | MOD wheel | vibrato 10 Hz, up to ±1 semitone (up = more) |
 | — | — | PEDAL jack | — |
@@ -122,7 +122,7 @@ update mode (UBOOT).
 | OCT− | octave down | drums: ghost hits | OCTAVE− | OCT− |
 | OCT+ | octave up | drums: hard hits | OCTAVE+ | OCT+ |
 | — | — | — | KNOB BANK | pins the pad sound picker open / closes it (lit while pinned or while K4 turns) |
-| — | — | — | FADER BANK | the fader bank screen; pressed again, < > or SELECT: the next bank A→B→C→D (closes after 4 s; lit while up; closes the pad picker) |
+| — | — | — | FADER BANK | the fader bank screen (lit while up); tapped again: closed. < > or SELECT: the next bank A→B→C→D (→E→F with HARMONY on). No time-out: it stays until FADER BANK, PATCH, or another screen (the menu, a layer, a page) closes it; closes the pad picker |
 | — | — | — | KNOB BANK + FADER BANK | the pads on the PLAY screen: DRUM KIT (default) ↔ STEPS (as the stock PAD BANK combo) |
 | — | — | — | < | page back (as SELECT, never tempo); SEQ held or pads on STEPS: step page back; visualiser: style |
 | — | — | — | > | page forward; SEQ held or pads on STEPS: step page forward; visualiser: style |
@@ -178,6 +178,7 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. DRUMS+RET, SYNTHS+RET, ALL DRY: [stems](#usb-audio-stems) for a DAW. A moment after the knob stops the keyboard re-plugs itself on USB (~1 s; RE-PLUG shows meanwhile) |
 | USB | STEM RATE | K6 | with a stem layout: 48 KHZ (default; resampled on the keyboard) or 44.1 KHZ (the lightest: the engines' own samples, the computer converts); **48 / 16 BIT** or **44.1 / 16**: 16-bit stems for a single-TT USB hub (about 78 dB below a full stem; with AUDIO IN, 24-bit stems do not fit such a hub's budget). Re-plugs as USB LAYOUT |
 | USB | STEM FILTER | K7 | at 48 KHZ: FULL (default; 12 taps, the cleanest top end) or LIGHT (8 taps, a third less of the stems' resampling, for busy patterns: −1.3 dB at 14 kHz, −2.8 dB at 16 kHz). At once |
+| USB | STEREO PAIR | K8 | with SYNTHS+RET (the harmoniser build): channels 5-6 RET (default: the effects return, as before), DRUMS, T1, T2 or T3: that source in stereo (a track after its pan, the drums at their sounds' pans), the effects return mono in the channel it left (DRUMS: SYN 1, SYN 2, SYN 3, RET, DRUMS L, DRUMS R). Beside it: RET MONO / ON CH n (where the return went); amber, NEEDS SYNTHS+RET, in the other layouts. The DAW's channel names at the next plug. Kept. (AUDIO IN, the vocoder build's, is under INPUT) |
 | PUNCH | STEM FX | K5 | with a stem layout: SLICER (default; each track's SLICER STUT, the punch-ins on the master only), PUNCH or PUNCH HQ (the rhythmic punch-ins on every stem; [below](#usb-audio-stems)). At once |
 | PUNCH | FADE | K6 | the punch-ins' fade in and out, 0 (default, the shortest) .. 15: the same setting as SELECT on the FX page (shown large at its top right). OCT+ back to 0 |
 | PUNCH | XFADE | K7 | with STEM FX: the shortest stitch on the stems (a punch in or out), 1.5 / 2.9 (default) / 5.8 MS; FADE makes it longer. At once |
@@ -398,6 +399,9 @@ samples; the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and NOISE engines; the delay ru
 - **[Mewcoder's page](.github/README.md):** what it adds, install and editor, the manuals.
 - **[VOCODER.md](VOCODER.md):** the vocoder manual.
 - **[VOCODER-DESIGN.md](VOCODER-DESIGN.md):** how it was built: the VSM201 modelling, the CPU and memory work, the tests.
+- **[HARMONISER.md](HARMONISER.md):** the harmoniser (the Eventide H949 model, on the `harmoniser` branch, in test):
+  HOME > HARMONY makes track 1 a three-voice harmoniser of your voice or any track sent in, with fader banks E and F
+  and its own HARMONY page (the H949's PITCH RATIO readout and switch row). Its manual covers the build as it is.
 
 ## Power-on and special combos (same as SLOOP on FM-1)
 

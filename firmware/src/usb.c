@@ -1,5 +1,16 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+/* (smk37-devtools harmoniser-spec.md §13w-5) the vocoder build: the USB stems' service and the audio in's receive in
+ * RAM (.ram_hot; their two SIE helpers inlined): out of the flash and the cache the busy halves fight over, where their
+ * time grew with the load (TIMER5 376 -> 618 us a half). Called through T5_FAR (RAM and the flash are beyond a call) */
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && SMK_VOC_LEAN
+#define T5HOT __attribute__((section(".ram_hot"), noinline, used, flatten))
+static inline void *t5_far(void *p) { void *volatile q = p; return q; }
+#define T5_FAR(fn) ((__typeof__(&fn))t5_far((void *)&fn))
+#else
+#define T5HOT
+#define T5_FAR(fn) (fn)
+#endif
 /* USB full-speed device on USB0: a class-compliant USB-MIDI interface.
  * All SIE traffic happens in usb_poll(), called from the TIMER5 ISR at 2 kHz,
  * so INDEX is never shared and no USB IRQ is needed. MIDI in goes to a ring
@@ -180,6 +191,15 @@ static struct {
     uint32_t adj_up, adj_down;                   /* packets one frame longer / shorter than the pattern */
     uint32_t fill_lo, fill_hi;                   /* range of fill_min since the stream started */
     uint32_t rate_sets;                          /* SET_CUR sampling frequency requests */
+#if UAC6
+    volatile uint8_t recentre;                   /* the render found the ring full: the next packet moves the reader
+                                                  * to the band's middle (harmoniser-spec.md §13d; the reader is the
+                                                  * ISR's, so the render only asks) */
+    uint16_t fr_arm;                             /* the SIE frame the last packet was queued in (§13k) */
+    uint32_t recentres;                          /* .. times it did */
+    uint32_t skips;                              /* frames a queued packet sat through untaken (§13k: the host did not
+                                                  * ask, or the answer missed the frame) */
+#endif
 } uac;
 #if SMK_UAC_IN_PROBE
 /* the frames received (16-bit L | R << 16), the host's 48 kHz: written by uin_rx (TIMER5); read by the loopback
@@ -198,6 +218,9 @@ static struct {
     uint32_t lb_r, lb_last, lb_under, lb_resync;
     uint32_t mon_r, mon_frac, mon_step, mon_under, mon_resync;
     uint32_t mon_lo, mon_hi;     /* the monitor's fill (frames) since the stream started */
+    int32_t mon_g, mon_ll, mon_lr;   /* (2026-11-13) a fade over a dropout: the gain (Q15, 32768 = through, exactly),
+                                  * the last sample each side (after TRIM): running dry it fades to silence from there
+                                  * (it cut to 0: a click), coming back it fades in (it started at full: a click) */
     uint16_t peak_l, peak_r;     /* |sample| since the console last read them */
     /* (2026-10-30, the stems layouts lost ~5 % of the packets, STEREO none: is the check late, or the hardware?)
      * the time between two checks of UIN_EP while the host plays (TIMER4 ticks), its longest, those over 1 ms; an
@@ -581,6 +604,14 @@ static const char *const U6_NAMES[UL_N][U6_CH] = {
     {"KICK", "SNARE", "HATS", "PERC", "RET L", "RET R"},
     {"SYN 1", "SYN 2", "SYN 3", "DRUMS", "RET L", "RET R"},
     {"SYN 1", "SYN 2", "SYN 3", "KICK", "SNARE", "HATS+PERC"}};
+#ifndef SMK_PAIR_STATE                                  /* (fx.c's STEREO PAIR; a host test of this file alone) */
+#define SP_RET 0u
+#define SP_DRUMS 1u
+#define SP_T1 2u
+#define SP_N 5u
+static uint8_t smk_pair;
+#define SMK_PAIR_STATE 1
+#endif
 static uint8_t u6_str[2u + 2u * 9u];
 static int uac6_str(uint32_t i, const uint8_t **d, uint16_t *l)
 {
@@ -588,7 +619,17 @@ static int uac6_str(uint32_t i, const uint8_t **d, uint16_t *l)
     uint32_t k = 0;
     if (i < 4u || i >= 4u + U6_CH)
         return 0;
-    for (s = U6_NAMES[SMK_UAC_PROBE ? UL_DRUMS : usb_layout_mode % UL_N][i - 4u]; *s && k < 9u; s++, k++)
+    s = U6_NAMES[SMK_UAC_PROBE ? UL_DRUMS : usb_layout_mode % UL_N][i - 4u];
+    if (!SMK_UAC_PROBE && usb_layout_mode % UL_N == UL_SYNTHS && smk_pair && smk_pair < SP_N) {   /* STEREO PAIR (fx.c) */
+        static const char *const PL[SP_N][2] = {{"RET L", "RET R"}, {"DRUMS L", "DRUMS R"}, {"SYN 1 L", "SYN 1 R"},
+                                                {"SYN 2 L", "SYN 2 R"}, {"SYN 3 L", "SYN 3 R"}};
+        uint32_t slot = smk_pair == SP_DRUMS ? 3u : (uint32_t)smk_pair - SP_T1, ch = i - 4u;
+        if (ch == slot)
+            s = "RET";
+        else if (ch >= 4u)
+            s = PL[smk_pair][ch - 4u];
+    }
+    for (; *s && k < 9u; s++, k++)
         u6_str[2u + 2u * k] = (uint8_t)*s, u6_str[3u + 2u * k] = 0;
     u6_str[0] = (uint8_t)(2u + 2u * k);
     u6_str[1] = 3;
@@ -1555,6 +1596,8 @@ static int uac6_room(uint32_t n)
         return 0;
     if (UA_N - (ua_w - ua_r) < n + n / 8u + 2u) {       /* nobody reads: drop the block */
         uac.overruns++;
+        uac.recentre = 1;                               /* (and the reader recentres: room again from the next block, not
+                                                         * a drop every block while the host runs slow) */
         return 0;
     }
     return 1;
@@ -1591,6 +1634,11 @@ static inline __attribute__((always_inline)) void uac6_fir(const int32_t *const 
         ph -= UAC_FIR_L;
     }
 }
+/* 16-bit stems' dither (harmoniser-spec.md §13j, off until the owner's A/B: the console's "dither 1"): TPDF, two 8-bit
+ * uniforms (1 LSB of 16 bit each, in the 24-bit word) added before the packet keeps the top two bytes (uac_service);
+ * a state a channel (a channel is on one core in a block: no shared state); a silent channel stays digital silence */
+static uint8_t stem_dither;
+static uint32_t r6_dsd[U6_CH] = {1u, 2u, 3u, 4u, 5u, 6u};
 static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint32_t n, int32_t m0, int32_t m1,
                                                   uint32_t c_lo, uint32_t c_hi)
 {
@@ -1602,13 +1650,31 @@ static __attribute__((noinline)) void uac6_tap_ch(const int32_t *const *ch, uint
             uac6_fir(ch, n, m0, m1, c_lo, c_hi, &r6_taps[0][0], UAC_FIR_N);
         return;
     }
+    uint32_t dith = stem_dither && U6_B16;
+    uint32_t live = 0;                                  /* (the channels with sound this block: a silent one is zero
+                                                         * frames without the scale, harmoniser-spec.md §13l-5) */
+    for (c = c_lo; c < c_hi; c++) {
+        int32_t o = 0;
+        for (i = 0; i < n; i++)
+            o |= ch[c][i];
+        live |= (o != 0) << c;
+    }
     for (i = 0; i < n; i++) {                           /* STEM RATE 44.1: a frame a sample, at the filter's level */
         int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
         uint8_t *f = u6_ring + ((w + i) & (UA_N - 1u)) * U6_FB + 3u * c_lo;
         for (c = c_lo; c < c_hi; c++, f += 3) {
             int32_t x = ch[c][i] >> 1, v;
+            if (!((live >> c) & 1u)) {
+                f[0] = f[1] = f[2] = 0;
+                continue;
+            }
             x = x > 262143 ? 262143 : x < -262144 ? -262144 : x;
             v = (x * m) >> 6;
+            if (dith) {                                 /* (§13j: TPDF, centred for the truncation) */
+                uint32_t a = r6_dsd[c] * 1664525u + 1013904223u, b = a * 1664525u + 1013904223u;
+                r6_dsd[c] = b;
+                v += (int32_t)(a >> 24) + (int32_t)(b >> 24) - 255 + 128;
+            }
             v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
             f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
         }
@@ -1764,6 +1830,13 @@ static uint32_t uac6_ring_packet(uint8_t *d)
     }
     r = ua_r;
     fill = ua_w - r;
+    if (uac.recentre) {                                 /* the ring ran full: skip the oldest, back to the band's middle */
+        uint32_t t = (lo + hi) / 2u;
+        if (fill > t)
+            r = ua_w - t, fill = t;
+        uac.recentre = 0;
+        uac.recentres++;
+    }
     RING_PUBLISH();                                     /* the slots after the index */
     k = fill < n ? fill : n;
     for (i = 0; i < k; i++)
@@ -1858,7 +1931,7 @@ static uint32_t uac6_probe_packet(uint8_t *d)
 /* TIMER5: a packet received on UIN_EP OUT (one a ms; polled at 2 kHz, so each is taken before the next; nested in the
  * render too, main.c): its frames into the ring, then the FIFO released (as ep3_rx). OverRun: a packet came while one
  * waited (lost) */
-static void uin_rx(void)
+static void T5HOT uin_rx(void)
 {
     uint32_t csr, n, i, w;
     uint32_t now, gap;
@@ -1928,12 +2001,13 @@ enum { UD_N = 1 };
 static int16_t uin_dst[UD_N][32];
 static const uint8_t voc_inl = 0, voc_inr = 0;
 #define VOC_ROUTE(r) ((void)(r), 0u)
+#define VOC_UDST(r) (r)
 static const uint8_t voc_trim[2] = {18u, 18u};
 static const uint16_t VOC_TRIM_Q12[19] = {[18] = 4096u};
 #define VOC_TRIM_N 19u
 static uint16_t uin_pk[2];
 #endif
-static uint8_t uin_rt_l, uin_rt_r;                      /* this block's routes (smk_vocoder.h VR_*: VR_OFF none) */
+static uint8_t uin_rt_l, uin_rt_r;                      /* this block's destinations (smk_vocoder.h UD_*: UD_N none) */
 static int32_t uin_tg_l = 4096, uin_tg_r = 4096;        /* this block's TRIM L / R (Q12; 4096: 0 dB, exact) */
 static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
 {
@@ -1972,10 +2046,29 @@ static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
     for (i = 0; i < n; i++) {
         uint32_t a, b;
         int32_t fr = (int32_t)(uin.mon_frac >> 1);      /* Q15 */
-        if (w - uin.mon_r < 2u) {                       /* run dry: stop until the target is back */
+        if (w - uin.mon_r < 2u) {                       /* run dry: stop until the target is back, fading out */
             uin.mon_under++;
             uin.mon_go = 0;
-            goto quiet;
+            if (mono)
+                for (; i < n; i++) {
+                    int32_t g = uin.mon_g = uin.mon_g > 1024 ? uin.mon_g - 1024 : 0;   /* (~0.7 ms) */
+                    int32_t vl = (uin.mon_ll * g) >> 15, vr = (uin.mon_lr * g) >> 15;
+                    for (d = 0; d < UD_N; d++)
+                        uin_dst[d][i] = 0;
+                    if (rl == rr) {
+                        if (rl < UD_N)
+                            uin_dst[rl][i] = (int16_t)((vl + vr) >> 1);
+                    } else {
+                        if (rl < UD_N)
+                            uin_dst[rl][i] = (int16_t)vl;
+                        if (rr < UD_N)
+                            uin_dst[rr][i] = (int16_t)vr;
+                    }
+                }
+            uin.mon_g = 0;                              /* (the next start fades in) */
+            if (mono)
+                uin_pk[0] = (uint16_t)(pl > 32768u ? 32768u : pl), uin_pk[1] = (uint16_t)(pr > 32768u ? 32768u : pr);
+            return;
         }
         a = uin_ring[uin.mon_r & (UIN_N - 1u)];
         b = uin_ring[(uin.mon_r + 1u) & (UIN_N - 1u)];
@@ -1991,6 +2084,12 @@ static void uin_take(int32_t *out, int16_t *mono, uint32_t n)
                 vl = (vl * tl) >> 12, vr = (vr * tr) >> 12;   /* (TRIM L / R; 0 dB: as it came) */
                 vl = vl > 32767 ? 32767 : vl < -32768 ? -32768 : vl;
                 vr = vr > 32767 ? 32767 : vr < -32768 ? -32768 : vr;
+                if (uin.mon_g < 32768) {                /* (back after a dropout, or the start: fading in, ~1.5 ms;
+                                                         * at 32768 nothing: as it came, exactly) */
+                    uin.mon_g = uin.mon_g + 512 > 32768 ? 32768 : uin.mon_g + 512;
+                    vl = (vl * uin.mon_g) >> 15, vr = (vr * uin.mon_g) >> 15;
+                }
+                uin.mon_ll = vl, uin.mon_lr = vr;
                 ml = (uint32_t)(vl < 0 ? -vl : vl), mr = (uint32_t)(vr < 0 ? -vr : vr);
                 pl = ml > pl ? ml : pl, pr = mr > pr ? mr : pr;   /* (the meters) */
                 if (rl == rr) {
@@ -2029,7 +2128,7 @@ static void uin_mix(int32_t *out, uint32_t n)           /* audio.c: the monitor 
 static void uin_block(uint32_t n)                       /* fx.c mix_block: the input for this block, each channel to its
                                                          * destination (smk_vocoder.h IN L / IN R) */
 {
-    uin_rt_l = (uint8_t)VOC_ROUTE(voc_inl), uin_rt_r = (uint8_t)VOC_ROUTE(voc_inr);
+    uin_rt_l = (uint8_t)VOC_UDST(VOC_ROUTE(voc_inl)), uin_rt_r = (uint8_t)VOC_UDST(VOC_ROUTE(voc_inr));
     uin_tg_l = VOC_TRIM_Q12[voc_trim[0] % VOC_TRIM_N], uin_tg_r = VOC_TRIM_Q12[voc_trim[1] % VOC_TRIM_N];
     uin_take(0, uin_dst[0], n);
 }
@@ -2039,7 +2138,7 @@ static void uin_block(uint32_t n)                       /* fx.c mix_block: the i
  * next one as soon as the last has gone (TxPktRdy clear). Not paced on SOF-pending (see usb_poll).
  * The ring is fed only while the host reads: it often selects alt 1 long before its first IN token,
  * and a recorder may stop reading without going back to alt 0 (a packet waiting > 20 ms). */
-static void uac_service(void)
+static void T5HOT uac_service(void)
 {
     uint32_t csr, n;
     if (!usb.up || !usb.config || !uac.alt)
@@ -2058,6 +2157,14 @@ static void uac_service(void)
             uac.missed++;                               /* UnderRun: an IN token found nothing queued */
         uac.flowing = 1;
     }
+#if UAC6
+    if (uac6_on) {                                      /* (§13k: the frames a queued packet sat through) */
+        uint16_t f = (uint16_t)(sie_rd(S_FRAME1) | (sie_rd(S_FRAME2) & 7u) << 8), d = (uint16_t)((f - uac.fr_arm) & 2047u);
+        if (uac.queued && d >= 2u && d < 64u)
+            uac.skips += d - 1u;
+        uac.fr_arm = f;
+    }
+#endif
     uac.queued = 1;
     uac.wait = 0;
 #if UAC6
@@ -2179,10 +2286,10 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
     }
 #endif
 #if SMK_UAC_IN_PROBE
-    uin_rx();                                           /* (before the stems' packet: its loopback reads the ring) */
+    T5_FAR(uin_rx)();                                   /* (before the stems' packet: its loopback reads the ring) */
 #endif
 #if FELUCCA_UAC
-    uac_service();
+    T5_FAR(uac_service)();
 #endif
 }
 
