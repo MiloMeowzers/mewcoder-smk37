@@ -131,7 +131,7 @@ for name, _, _ in SHOTS:
 html = sub1(r'(\s*<p><button id="app" class="ed" hidden data-t="appInstall"></button></p>)',
             f'\n  <p><a class="ed" href="{MANUAL[0]}" target="_blank" rel="noopener">{MANUAL[1]}</a></p>'
             r'\1' + '\n  <h2 class="shots-h">On the keyboard</h2>\n  <div class="shots">\n' + "".join(
-                f'    <figure><img src="shots/{n}.png" width="240" height="240" alt="{c}: {s}" loading="lazy">'
+                f'    <figure><img src="shots/{n}.png" width="240" height="240" alt="" loading="lazy">'
                 f'<figcaption><b>{c}</b>{s}</figcaption></figure>\n' for n, c, s in SHOTS) + "  </div>", html, expand=True)
 html = sub1(r"(\s*\[hidden\] \{ display: none !important; \})",
             r"\1" + "\n  .shots-h { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;"
