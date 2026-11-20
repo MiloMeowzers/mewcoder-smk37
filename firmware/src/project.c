@@ -867,10 +867,16 @@ typedef struct {
     uint8_t sqcarry, sqlb, sqgrid, spare;           /* the stem page's FLIP RETURN, LOOP BACK length, RAMP grid
                                                      * (smk_seqfx.h; a 12- or 16-byte record: their defaults, SLIP,
                                                      * 1 bar, 1/4) */
+    uint8_t saver, pmask, pflags, rsv;              /* (2026-11-20; a 20-byte record: their defaults) LIGHTS >
+                                                     * SCREENSAVER (cats_idle ^ CATS_IDLE_DEF: 0 = 5 min); the punch's
+                                                     * stems switched off (^ 15: 0 = all on); bit 0 REPEAT TRIPLETS OFF,
+                                                     * bits 1..3 FREEZE DELAY ^ 2 (0 = 1/4) */
+    uint8_t br[4][9];                               /* BEAT REPEAT, each track's settings (smk_seqfx.h; 0 = defaults) */
 } smkset_t;
 #define SMKSET_V1 12u
 #define SMKSET_V2 16u
-_Static_assert(sizeof(smkset_t) == 20u, "smkset: 12 bytes, the stems' 4, the stem page's 4");
+#define SMKSET_V3 20u
+_Static_assert(sizeof(smkset_t) == 60u, "smkset: 12 bytes, the stems' 4, the stem page's 4, 4, BEAT REPEAT's 36");
 static smkset_t smkset_saved;
 static uint8_t smkset_old_ml[3], smkset_old_have;  /* the MIDI part's last three bytes as read (midi_part_read) */
 static void smkset_fill(smkset_t *s)
@@ -892,6 +898,7 @@ static void smkset_fill(smkset_t *s)
     s->sqcarry = (uint8_t)(sq_carry != 0u);
     s->sqlb = (uint8_t)(sq_lb % SQ_LB_N);
     s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
+    s->saver = (uint8_t)((cats_idle % CATS_IDLE_N) ^ CATS_IDLE_DEF);
 #if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
     s->spare = (uint8_t)(voc_gdel % 11u | (voc_saws % VCS_N) << 4);   /* GATE DELAY, CARRIER's saws (the vocoder
                                                      * build; 0 in the others) */
@@ -903,7 +910,7 @@ static int smkset_take(const uint8_t *b, uint32_t n)
 {
     smkset_t s;
     memset(&s, 0, sizeof s);
-    if (n != sizeof s && n != SMKSET_V2 && n != SMKSET_V1)
+    if (n != sizeof s && n != SMKSET_V3 && n != SMKSET_V2 && n != SMKSET_V1)
         return 0;
     memcpy(&s, b, n);
     if (s.magic != SMKSET_MAGIC)
@@ -921,7 +928,11 @@ static int smkset_take(const uint8_t *b, uint32_t n)
         stem_light = (uint8_t)(s.sfilt & 1u);
         tp_xfl = (uint8_t)(s.xfl < TPX_N ? s.xfl : TPX_128);
         tp_lin = (uint8_t)(s.lin & 1u);
-        if (n == sizeof s) {                       /* (an older record has none: the defaults stay) */
+        if (n >= SMKSET_V3 + 4u) {                 /* (2026-11-20: the screensaver) */
+            uint32_t ix = (s.saver ^ CATS_IDLE_DEF) & 7u;
+            cats_idle = (uint8_t)(ix < CATS_IDLE_N ? ix : CATS_IDLE_DEF);
+        }
+        if (n >= SMKSET_V3) {                      /* (an older record has none: the defaults stay) */
             sq_carry = (uint8_t)(s.sqcarry & 1u);
             sq_lb = (uint8_t)(s.sqlb < SQ_LB_N ? s.sqlb : 1u);
             sq_grid = (uint8_t)(s.sqgrid < SQ_GRID_N ? s.sqgrid : 0u);

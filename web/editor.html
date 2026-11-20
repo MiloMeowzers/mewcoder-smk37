@@ -3424,7 +3424,7 @@ function makeMockDevice(opt = {}) {
     dsyn: null, dsynStored: null, dsynPlayed: [],  /* v10: the SYN kits (RAM, flash), the auditions heard */
     ml: null,                                       /* 2.6: the MIDI LEARN map (seq.c ml_tab, 16 x 2 bytes), null: none */
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
-    smkset: Uint8Array.from([0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),   /* project.c smkset_t */
+    smkset: Uint8Array.from({ length: 60 }, (_, i) => [0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1][i] || 0),   /* project.c smkset_t (60 bytes since 2026-11-20: 0 = the defaults) */
     vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
       const v = new Uint8Array(532);                  /* (532 bytes since POLY CAP: both vocoder builds since the merge) */
       v.set([6, 6, 6], 512);                          /* POLY CAP T1 .. T3: AUTO (FM6 at 4) */
@@ -3876,7 +3876,7 @@ function makeMockDevice(opt = {}) {
             }
             else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
             else if (id >= 12 && id <= 14) {                /* SMK-37 (editor.c: stopped only; 13 taken, not modelled) */
-              if (id !== 13 && (id === 12 ? P.len !== 20 : P.len !== 480 && P.len !== 512 && P.len !== 532)) throw 0;   /* (532: POLY CAP) */
+              if (id !== 13 && (id === 12 ? P.len !== 20 && P.len !== 60 : P.len !== 480 && P.len !== 512 && P.len !== 532)) throw 0;   /* (532: POLY CAP) */
               if (st.playing) rc = 3;
               else if (id === 12) st.smkset = P.buf.slice();
               else if (id === 14) st.vocset = P.buf.slice();
@@ -7890,7 +7890,8 @@ const OB_PIT = Array.from({ length: 128 }, (_, k) => {   /* PITCH: -64 .. 63 as 
 });
 const OB_TRIM = Array.from({ length: 25 }, (_, i) => [(i - 18) & 255, `${i > 18 ? "+" : ""}${i - 18} DB`]);   /* signed bytes */
 const OB = {
-  smk: { id: 12, len: 20, magic: 0x54534B53, box: "smkset", dev: null, d: null, dirty: false, fields: [
+  smk: { id: 12, len: 60, lens: [20, 60], magic: 0x54534B53, box: "smkset", dev: null, d: null, dirty: false, fields: [
+    ["saver", 20, "SCREENSAVER", [[3, "OFF"], [2, "1 MIN"], [1, "2 MIN"], [0, "5 MIN"], [7, "10 MIN"], [6, "30 MIN"]], 0],
     ["vel", 4, "KEY VELOCITY", ["DYNAMIC", "SOFT", "HARD", "FIXED 64", "FIXED 100", "FIXED 127"], 0],
     ["trs", 5, "TRS MIDI OUT", ["OFF", "ON"], 1],
     ["bup", 6, "BEND UP", OB_BEND, 7], ["bdn", 7, "BEND DOWN", OB_BEND, -1],

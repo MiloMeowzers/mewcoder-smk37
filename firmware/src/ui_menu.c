@@ -19,7 +19,11 @@ enum { MI_COLOR, MI_ZOOM,
        MI_KLAY,                                    /* SMK-37: SCREEN > KNOB LAYOUT (panel.c knob_enc), the third row as before */
 #endif
        MI_ACCEL,
-       MI_LIGHTS, MI_KEYS, MI_NOTES, MI_LOWCUT, MI_USB,
+       MI_LIGHTS, MI_KEYS, MI_NOTES,
+#if BOARD_SMK37
+       MI_SAVER,                                   /* SMK-37: LIGHTS > SCREENSAVER (splash.c cats_idle; kept, smkset) */
+#endif
+       MI_LOWCUT, MI_USB,
 #if FELUCCA_CDC
        MI_SERIAL,
 #endif
@@ -84,11 +88,22 @@ enum { MI_COLOR, MI_ZOOM,
 #if !MI_HAS_RATE
 #define MI_RATE 0xFFu                              /* (no row: never an item) */
 #endif
+#if BOARD_SMK37
+enum { CATS_OFF, CATS_ABOUT, CATS_SAVER };            /* (splash.c: the cats while the unit runs) */
+#define CATS_IDLE_N 6u
+#define CATS_IDLE_DEF 3u                               /* 5 min (the owner) */
+static uint8_t cats_idle = CATS_IDLE_DEF;              /* LIGHTS > SCREENSAVER: splash.c CATS_IDLE_MIN's index (smkset) */
+static void cats_open(uint32_t why);
+#endif
 static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #if BOARD_SMK37
                                               "KNOB LAYOUT",
 #endif
-                                              "KNOB ACCEL", "LIGHTS", "KEYS", "NOTES", "SPEAKER LOWCUT", "USB AUDIO",
+                                              "KNOB ACCEL", "LIGHTS", "KEYS", "NOTES",
+#if BOARD_SMK37
+                                              "SCREENSAVER",
+#endif
+                                              "SPEAKER LOWCUT", "USB AUDIO",
 #if FELUCCA_CDC
                                               "USB SERIAL",
 #endif
@@ -316,6 +331,12 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         *c = lights_lvl ? C_HI : C_DIM;               /* (needs LIGHTS) */
         return KEYS_NAME[lights_keys % KEYS_N];
     case MI_NOTES: return lights_notes ? "ON" : "OFF";
+#if BOARD_SMK37
+    case MI_SAVER: {                                  /* the cats after this long untouched, stopped */
+        static const char *const N[CATS_IDLE_N] = {"OFF", "1 MIN", "2 MIN", "5 MIN", "10 MIN", "30 MIN"};
+        return N[cats_idle % CATS_IDLE_N];
+    }
+#endif
     case MI_LOWCUT: return settings.lowcut ? "ON" : "OFF";
     case MI_USB: return usb_full ? "FULL" : "MASTER";
 #if FELUCCA_CDC
@@ -1306,10 +1327,21 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     case MI_ABOUT:
         if (!s) {
+#if BOARD_SMK37
+            cats_open(CATS_ABOUT);                     /* the cats, the build's name and version; then its page */
+#else
             ui.menu = 2;
             ui.force = 1;
+#endif
         }
         break;
+#if BOARD_SMK37
+    case MI_SAVER: {                                   /* right longer, left shorter (OFF first); OCT+ back to 5 MIN */
+        int32_t v = s ? (int32_t)(cats_idle % CATS_IDLE_N) + s : (int32_t)CATS_IDLE_DEF;
+        cats_idle = (uint8_t)(v < 0 ? 0 : v >= (int32_t)CATS_IDLE_N ? CATS_IDLE_N - 1u : (uint32_t)v);
+        break;
+    }
+#endif
     default:
         break;
     }

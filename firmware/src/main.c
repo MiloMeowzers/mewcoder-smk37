@@ -230,6 +230,13 @@ static void smk_faders(void)
 {
     static uint8_t last[4] = {0xFF, 0xFF, 0xFF, 0xFF};
     uint32_t i;
+    if (smk_fader_resync) {                               /* (the cats went: the faders where they are, none acts) */
+        smk_fader_resync = 0;
+        for (i = 0; i < 4u; i++)
+            if (last[i] != 0xFF)
+                last[i] = fm1_in.fader[i];
+        return;
+    }
     if (daw_on) {                                         /* DAW mode: the faders send MIDI (ui_daw.c); back from it */
         smk_fbank_new = 1;                                /* each waits to move again */
         return;
@@ -512,6 +519,9 @@ UI_SMALL static void fm1_main(void)
     healthy_since = fm1_ms;
     for (;;) {
         uint32_t m = fm1_ms;
+#if BOARD_SMK37
+        int cats;
+#endif
         fm1_wdt_feed();
         usb_retry(fm1_ms);
 #if UAC6 && !SMK_UAC_PROBE
@@ -627,13 +637,19 @@ UI_SMALL static void fm1_main(void)
         felucca_dbg.page = ui.page;
         felucca_dbg.home = ui.home;
         felucca_dbg.stage = 1;
+#if BOARD_SMK37
+        cats = cats_service();                          /* ABOUT / the screensaver: the panel's handling paused */
+        if (!cats)
+#endif
         ui_input();
         felucca_dbg.stage = 2;
         ui_leds();
 #if BOARD_SMK37
-        smk_faders();
+        if (!cats)
+            smk_faders();
         smk_wheels();
         padled_flush();                                 /* the pads' colours, between LCD transfers */
+        if (!cats)
 #endif
         ui_draw();
         felucca_dbg.stage = 8;
@@ -643,6 +659,9 @@ UI_SMALL static void fm1_main(void)
 #endif
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 15u) {                               /* ~60 UI frames/s at most */
+#if BOARD_SMK37
+            if (!cats_on)
+#endif
             ui_input();
 #if BOARD_SMK37
             smk_wheels();                       /* (bends follow the wheel, not the screen) */

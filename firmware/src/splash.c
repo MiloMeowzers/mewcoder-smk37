@@ -64,7 +64,6 @@ UI_SMALL static void sloop_logo_draw(uint32_t y0)
 #define SPLASH_Y 4u                 /* the cats' box: its top row on the screen, centred across */
 #define SPLASH_X ((240u - SPLASH_ANIM_W) / 2u)
 #define SPLASH_BAND 98u             /* drawn in two bands (the canvas holds 240 x 124) */
-#define SPLASH_CAP_MS 10000u
 #define SPLASH_MAGENTA RGB(255, 64, 255)
 
 /* frame f's data: the stroke count's 2 bytes, then each stroke: colour << 6, points, x0, y0, then a step a byte
@@ -181,7 +180,7 @@ UI_SMALL static void sloop_splash(void)
 {
     static char b[40];
     const char *v = FELUCCA_VERSION;
-#if SMK_UAC_IN_PROBE && defined(SMK_HARM)
+#if SMK_UAC_IN_PROBE && SMK_HARM_BUILD
     static const char *const T[3] = {"MEWCODER ", "+", " HARMONISER"};
 #elif SMK_UAC_IN_PROBE
     static const char *const T[3] = {"MEWCODER", "", ""};
@@ -217,8 +216,8 @@ UI_SMALL static void sloop_splash(void)
     cv_blit(0, 202);
 }
 
-/* main.c, the keys read: the cats dance until a key, a pad or a button is pressed (or 10 s); then the press is let
- * go of first (up to 2 s) and its edges cleared, so it plays nothing */
+/* main.c, the keys read: the cats dance until a key, a pad or a button is pressed (no time limit: the owner,
+ * 2026-11-20); then the press is let go of first (up to 2 s) and its edges cleared, so it plays nothing */
 static void splash_play(void)
 {
     uint32_t t0 = fm1_ms, next = fm1_ms + SPLASH_ANIM_MS, f = 1;
@@ -226,8 +225,6 @@ static void splash_play(void)
         fm1_wdt_feed();
         usb_retry(fm1_ms);
         if (fm1_in.notes | fm1_in.buttons | (uint32_t)fm1_in.keys | (uint32_t)(fm1_in.keys >> 32))
-            break;
-        if ((uint32_t)(fm1_ms - t0) >= SPLASH_CAP_MS)
             break;
         if ((int32_t)(fm1_ms - next) >= 0) {
             splash_frame_draw(f);
@@ -242,6 +239,92 @@ static void splash_play(void)
         usb_retry(fm1_ms);
     }
     fm1_in.notes_pressed = 0, fm1_in.pressed = 0, fm1_in.released = 0;
+}
+/* ---- the cats while the unit runs (smk37-devtools splash-spec.md 6-7, the owner 2026-11-20) ----
+ * ABOUT (HOME menu, OCT+ on ABOUT) and the screensaver (LIGHTS > SCREENSAVER: after that long with nothing touched,
+ * only while the sequencer is stopped) show the boot screen, the cats dancing. Any key, pad, button, knob or fader
+ * brings back the screen that was up (ABOUT: its page), and that touch is swallowed: no note, no button action, no
+ * value changed (a knob's steps dropped, a fader picked up where it now is). MIDI and USB audio play on underneath
+ * (the audio runs as ever: only the panel's handling pauses, main.c) */
+static const uint8_t CATS_IDLE_MIN[CATS_IDLE_N] = {0, 1, 2, 5, 10, 30};   /* OFF, minutes (cats_idle: ui_menu.c) */
+static uint8_t cats_on, cats_armed, cats_woke;
+static uint8_t cats_fpos[4];             /* the faders where they were last seen still */
+static uint8_t smk_fader_resync;         /* main.c smk_faders: take the faders where they are, act on none */
+static uint32_t cats_next, cats_f, cats_touch;
+static uint32_t cats_held(void)
+{
+    return fm1_in.notes | fm1_in.buttons | (uint32_t)fm1_in.keys | (uint32_t)(fm1_in.keys >> 32);
+}
+static int cats_touched(void)            /* held, a knob turned, a fader moved (more than its noise) */
+{
+    uint32_t i;
+    int t = cats_held() != 0u;
+    for (i = 0; i < FM1_NENC; i++)
+        t |= fm1_in.enc_steps[i] != 0;
+    for (i = 0; i < 4u; i++) {
+        int32_t d = (int32_t)fm1_in.fader[i] - (int32_t)cats_fpos[i];
+        t |= d > 2 || d < -2;
+    }
+    return t;
+}
+static void cats_still(void)             /* the faders' places now */
+{
+    uint32_t i;
+    for (i = 0; i < 4u; i++)
+        cats_fpos[i] = fm1_in.fader[i];
+}
+static void cats_open(uint32_t why)
+{
+    cats_on = (uint8_t)why, cats_armed = 0, cats_woke = 0, cats_f = 1;
+    cats_still();
+    sloop_splash();
+    cats_next = fm1_ms + SPLASH_ANIM_MS;
+}
+/* main.c, every pass: 1 while the cats are up (the panel's handling paused); opens the screensaver when due */
+static int cats_service(void)
+{
+    uint32_t i;
+    int t = cats_touched();
+    if (!cats_on) {
+        if (t || song.playing || !cats_idle) {
+            cats_touch = fm1_ms;
+            cats_still();
+            return 0;
+        }
+        if ((uint32_t)(fm1_ms - cats_touch) < CATS_IDLE_MIN[cats_idle % CATS_IDLE_N] * 60000u)
+            return 0;
+        cats_open(CATS_SAVER);
+        t = 0;
+    }
+    for (i = 0; i < FM1_NENC; i++)
+        (void)fm1_enc_take(i);                          /* (a knob's steps: dropped) */
+    smk_extq_r = smk_extq_w;                            /* (the keybed's outer keys: dropped) */
+    if (!cats_armed) {                                  /* (ABOUT: the press that opened it let go of first) */
+        cats_armed = !cats_held();
+        cats_still();
+        t = 0;
+    }
+    if (t)
+        cats_woke = 1;
+    if (cats_woke) {
+        cats_still();
+        if (!cats_held()) {                             /* let go: back, nothing acted on */
+            uint32_t why = cats_on;
+            cats_on = 0, cats_woke = 0, cats_touch = fm1_ms;
+            fm1_in.notes_pressed = 0, fm1_in.pressed = 0, fm1_in.released = 0;
+            smk_fader_resync = 1;
+            lcd_fill(0, 0, 240, 240, C_BLACK);
+            if (why == CATS_ABOUT)
+                ui.menu = 2;                            /* (ABOUT's page: the credits, as before) */
+            ui.force = 1;
+        }
+    } else if ((int32_t)(fm1_ms - cats_next) >= 0) {
+        splash_frame_draw(cats_f);
+        cats_f = (cats_f + 1u) % SPLASH_ANIM_N;
+        cats_next = fm1_ms + SPLASH_ANIM_MS;
+    }
+    fm1_in.notes_pressed = 0, fm1_in.pressed = 0, fm1_in.released = 0;
+    return 1;
 }
 #else
 /* the boot screen: the logo, the version, where it comes from */
