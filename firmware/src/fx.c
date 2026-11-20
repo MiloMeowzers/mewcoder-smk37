@@ -2243,7 +2243,7 @@ static void mix_block(int32_t *out, uint32_t n)
         TIM_MARK(TS_PGO);
 #if SMK_UAC_IN_PROBE
         if (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW && n <= CTL)
-            voc_analyse(n);                             /* the vocoder's analysis, while core 1 renders track 3 */
+            VOC_FAR(voc_analyse)(n);                    /* the vocoder's analysis, while core 1 renders track 3 */
 #endif
         TIM_MARK(TS_ANA);
         mix_units(U_ALL & ~c1 & ~uskip, n, &acc[0], part_buf[0]);   /* this core's units, meanwhile */
