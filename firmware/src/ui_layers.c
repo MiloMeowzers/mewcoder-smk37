@@ -508,8 +508,7 @@ static void pg2_set(uint32_t si, int32_t d)
         v = v < (si == BR_GATE ? 1 : 0) ? (si == BR_GATE ? 1 : 0) : v > BR_MAX[si] ? BR_MAX[si] : v;
         br_s[k][si] = (uint8_t)v;
     }
-    if (all)
-        ui_message("ALL TRACKS");
+    pg2_last = (uint8_t)si;
     ui.layer_used = 1;
 }
 static void pg2_knobs(void)
@@ -854,6 +853,111 @@ UI_SMALL static const char *lock_label(const track_t *t, uint32_t id)   /* the l
 
 static uint8_t layer_shown;                              /* the screen holds a layer (or a hold) */
 static const char *layer_sub_shown = "";                 /* the sub line last drawn (the host tests read it) */
+#if BOARD_SMK37
+/* page 2's screen (the owner's layout, 2026-11-20): the header (the knobs' track, the repeat's state), every BEAT REPEAT
+ * setting of that track in a 3 x 3 grid with its knob (the one turned last lit), the four tracks' punch / repeat / mute
+ * along the foot. Each band redrawn only when what it shows changes */
+static uint8_t pg2_vis;                                 /* page 2 is what the screen holds */
+static void pg2_val(char *b, uint32_t si, const uint8_t *s)
+{
+    static const char *const GN[9] = {"1/4", "1/6", "1/8", "1/12", "1/16", "1/24", "1/32", "1/48", "1/64"};
+    b[0] = 0;
+    switch (si) {
+    case BR_OFS: fmt_int(b, s[BR_OFS]); str_cpy(b + str_len(b), "/16", 4); break;
+    case BR_IVAL: str_cpy(b, BR_IVN[s[BR_IVAL] & 7u], 8); break;
+    case BR_GRID: str_cpy(b, GN[s[BR_GRID] % 9u], 6); break;
+    case BR_CHANCE: case BR_DECAY: fmt_int(b, s[si]); str_cpy(b + str_len(b), " %", 3); break;
+    case BR_GATE: fmt_int(b, s[BR_GATE]); str_cpy(b + str_len(b), "/16", 4); break;
+    case BR_WD: fmt_int(b, s[BR_WD]); break;
+    case BR_PITCH: if (s[BR_PITCH]) b[0] = '-', b[1] = 0; fmt_int(b + str_len(b), s[BR_PITCH]); str_cpy(b + str_len(b), " st", 4); break;
+    default: fmt_int(b, br_var); break;                 /* (VARIATION: the menu's, all tracks) */
+    }
+}
+UI_SMALL static void pg2_screen(void)
+{
+    static uint32_t sig_h, sig_r[3], sig_f;
+    static const uint8_t SI[9] = {BR_OFS, BR_IVAL, BR_GRID, BR_CHANCE, BR_GATE, BR_DECAY, BR_WD, BR_PITCH, 0xFFu};
+    static const char *const NAME[9] = {"OFFSET", "INTERVAL", "GRID", "CHANCE", "GATE", "DECAY", "WET/DRY", "PITCH",
+                                        "VARIATION"};
+    static const char *const KN[9] = {"SELECT", "ALGO", "PRESETS", "K1", "K2", "K3", "K4", "VOLUME", "PUNCH 2"};
+    static const char *const TN[NTRK] = {"T1", "T2", "T3", "DRUMS"};
+    uint32_t k = br_ksel % NTRK, r, c, i, all = (pg2_hold >> k) & 1u, sig;
+    const uint8_t *s = br_s[k];
+    char st[24], v[12];
+    uint16_t col = TE_COL[k];
+    if (!pg2_vis) {                                     /* (just opened: everything anew) */
+        lcd_fill(0, 0, 240, 240, C_BLACK);
+        sig_h = sig_r[0] = sig_r[1] = sig_r[2] = sig_f = 0;
+        pg2_vis = 1;
+    }
+    /* the header: BEAT REPEAT, the track (or ALL TRACKS while its pad is held), the state */
+    if (!((br_on >> k) & 1u)) {
+        str_cpy(st, "OFF", sizeof st);
+    } else if (br_ready && br[k].phase == 1u) {
+        str_cpy(st, "CAPTURE", sizeof st);
+    } else if (br_ready && br[k].phase == 2u) {
+        uint32_t tot = br[k].glen ? (s[BR_GATE] * (BEAT_U / 4u)) / br[k].glen : 0u;
+        str_cpy(st, "RPT ", sizeof st);
+        fmt_int(st + 4, (int32_t)br[k].k);
+        str_cpy(st + str_len(st), "/", 2);
+        fmt_int(st + str_len(st), (int32_t)(tot > 1u ? tot - 1u : 1u));
+    } else {
+        str_cpy(st, (br_mute >> k) & 1u ? "MUTED" : "READY", sizeof st);
+    }
+    sig = studio_hash(studio_hash(k * 7u + all * 131u + col, st), all ? "a" : "t");
+    if (sig != sig_h) {
+        sig_h = sig;
+        cv_begin(240, 38, C_BLACK);
+        cv_text(cv_text(4, 4, &FONT_S, "BEAT REPEAT ", C_HI), 4, &FONT_S, all ? "ALL" : TN[k], all ? C_WHITE : col);
+        cv_text(236 - text_w(&FONT_S, st), 4, &FONT_S, st, br[k].phase && br_ready && ((br_on >> k) & 1u) ? C_WHITE : C_DIM);
+        cv_text(4, 21, &FONT_S, all ? "setting all 4 tracks" : "hold a track pad: all", all ? C_WHITE : C_DIM);
+        cv_rect(0, 37, 240, 1, TE_G1);
+        cv_blit(0, 0);
+    }
+    /* the grid: three rows of three, 80 x 50 */
+    for (r = 0; r < 3u; r++) {
+        sig = r * 977u + k * 13u + pg2_last * 101u;
+        for (c = 0; c < 3u; c++) {
+            pg2_val(v, SI[r * 3u + c], s);
+            sig = studio_hash(sig * 31u, v);
+        }
+        if (sig == sig_r[r])
+            continue;
+        sig_r[r] = sig;
+        cv_begin(240, 50, C_BLACK);
+        for (c = 0; c < 3u; c++) {
+            uint32_t q = r * 3u + c, lit = SI[q] == pg2_last;
+            int32_t x = (int32_t)c * 80;
+            cv_rect(x + 2, 2, 76, 46, lit ? TE_G1 : C_BLACK);
+            cv_rect(x + 2, 2, 76, 1, lit ? col : TE_G1);
+            cv_text(x + 5, 3, &FONT_S, NAME[q], lit ? C_WHITE : C_AMB);   /* (three lines: name, value, knob) */
+            pg2_val(v, SI[q], s);
+            cv_text(x + 5, 18, &FONT_S, v, lit ? C_WHITE : C_HI);
+            cv_text(x + 5, 33, &FONT_S, KN[q], lit ? col : C_DIM);
+        }
+        cv_blit(0, 40u + r * 50u);
+    }
+    /* the foot: each track: P punched, R repeat on (white while it plays), M muted */
+    sig = 7u;
+    for (i = 0; i < NTRK; i++)
+        sig = sig * 31u + ((tp_sel >> i) & 1u) * 3u + ((br_on >> i) & 1u) * 5u + ((br_mute >> i) & 1u) * 7u +
+              (br_ready && br[i].phase ? 11u : 0u) + (i == k) * 13u + TE_COL[i];
+    if (sig != sig_f) {
+        sig_f = sig;
+        cv_begin(240, 48, C_BLACK);
+        cv_rect(0, 0, 240, 1, TE_G1);
+        for (i = 0; i < NTRK; i++) {
+            int32_t x = (int32_t)i * 60 + 6;
+            int on = (br_on >> i) & 1u, run = on && br_ready && br[i].phase;
+            cv_text(x, 5, &FONT_S, TN[i], i == k ? TE_COL[i] : C_AMB);
+            cv_text(x, 25, &FONT_S, "P", (tp_sel >> i) & 1u ? TE_COL[i] : C_DIM);
+            cv_text(x + 16, 25, &FONT_S, "R", run ? C_WHITE : on ? TE_COL[i] : C_DIM);
+            cv_text(x + 32, 25, &FONT_S, "M", (br_mute >> i) & 1u ? TE_RED : C_DIM);
+        }
+        cv_blit(0, 192);
+    }
+}
+#endif
 UI_SMALL static void layer_screen_draw(void)
 {
     static uint32_t head, tiles, foot;
@@ -864,6 +968,17 @@ UI_SMALL static void layer_screen_draw(void)
     uint32_t i, layer = ui.layer, sel = song.sel;
     track_t *t = TSEL;
     uint16_t col = TE_COL[sel & 3u];
+#if BOARD_SMK37
+    if (layer == LY_FX && pg2_on) {                     /* page 2: its own screen */
+        layer_shown = 1;
+        pg2_screen();
+        return;
+    }
+    if (pg2_vis) {                                      /* (back from page 2: the page anew) */
+        pg2_vis = 0;
+        layer_shown = 0;
+    }
+#endif
     if (!layer_shown) {
         lcd_fill(0, 0, 240, 240, C_BLACK);
         ui.force = 1;

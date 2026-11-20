@@ -1131,6 +1131,10 @@ UI_SMALL static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_
     uint32_t l, now = fm1_ms, held = LY_PLAY, eat = 0;
     if (ly_lock != LY_PLAY) {
         uint32_t keep = 1u << panel.btn[B_PLAY] | 1u << panel.btn[B_REC] | 1u << panel.btn[B_OCTDN] | 1u << panel.btn[B_OCTUP];
+#if BOARD_SMK37
+        if (ly_lock == LY_FX)
+            keep |= 1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT;   /* (the punch page locked: < > turn to page 2 and back) */
+#endif
         eat = *pressed & ~keep;
         if (eat) {
             layer_unlock();
@@ -1390,9 +1394,12 @@ UI_SMALL static void ui_input(void)
     if (pressed & (1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT)) {   /* < >: SEQ held: the step pages; the visualiser:
                                                                 * its style; else the pages, as SELECT (never the tempo) */
         int32_t d = (pressed >> SMK_BTN_RIGHT) & 1u ? 1 : -1;
-        if (ui.layer == LY_FX) {                          /* the punch page: < or > turns to page 2 and back */
+        if (ui.layer == LY_FX) {                          /* the punch page: < or > turns to page 2 and back; page 2
+                                                           * latches (the FX layer locked open: FX may be let go) */
             pg2_on = (uint8_t)!pg2_on;
             pg2_hold = 0;
+            if (pg2_on)
+                ly_lock = LY_FX, ui.layer = LY_FX;
         } else if (pick_shown())
             pick_turn(d);
         else if (fb_shown())                              /* the FADER BANK screen: the banks */
