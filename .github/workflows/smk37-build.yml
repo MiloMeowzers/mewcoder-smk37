@@ -168,7 +168,7 @@ jobs:
           git worktree add ../harmoniser FETCH_HEAD
           out="$GITHUB_WORKSPACE/out"
           cd ../harmoniser
-          BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 \
+          BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 SMK_HARM_BUILD=1 \
             sh build.sh > "$out/build-harmoniser.log" 2>&1 || { tail -50 "$out/build-harmoniser.log"; exit 1; }
           tail -3 "$out/build-harmoniser.log"
           hv="2.8.4-mewcoder-harmoniser-$(git rev-parse --short HEAD)"
