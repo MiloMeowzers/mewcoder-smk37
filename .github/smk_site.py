@@ -204,15 +204,25 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
              f'<a class="brand smkb" href="#sound" aria-label="{htmlmod.escape(BNAME)}"><b>' +
              BNAME.upper().replace(" + ", ' <i>+</i> ') + "</b>" +
              (f"<small>{htmlmod.escape(VSHOW)}</small>" if VSHOW else "") + "</a>", e, re.S)
+    # (the side bar's top tighter: the name is shorter than the logo was)
     e = sub1(r"</head>", "<style>.brand.smkb { flex-direction: column; align-items: flex-start; gap: 4px; }"
              " .smkb b { font-size: 15px; font-weight: 600; letter-spacing: .06em; line-height: 1.25; }"
-             " .smkb i { font-style: normal; color: #ff40ff; } .smkb small { font-size: 12px; color: #ff40ff; white-space: pre; }"
+             " .smkb i { font-style: normal; color: #ff40ff; }"
+             " .smkb small { font-size: 12px; color: #ff40ff; white-space: pre; }"
+             " @media (min-width: 861px) { .side { padding-top: 12px; } .brand.smkb { margin-bottom: -8px; } }"
              "</style>\n</head>", e)
-    # the dancing cats at the foot of the device card, always, under its controls (hidden where the side bar becomes a
-    # top bar)
-    e = sub1(r"</div>\n  </aside>", f"  {CATS_IMG}\n    </div>\n  </aside>", e)
-    e = sub1(r"</head>", "<style>.devcard .cats { width: 100%; max-width: 200px; height: auto; align-self: center; margin-top: 8px;"
-             " background: #000; border-radius: 8px; } @media (max-width: 860px) { .devcard .cats { display: none; } }"
-             "</style>\n</head>", e)
+    # SLOOP's installer link names this build's installer (it links there already)
+    for a, b in (('installer: "SLOOP installer"', 'installer: "Installer"'),
+                 ('installer: "SLOOP インストーラー"', 'installer: "インストーラー"')):
+        if e.count(a) != 1:
+            raise SystemExit(f"smk_site.py: not found once: {a}")
+        e = e.replace(a, b)
+    # the dancing cats in the device card, directly above the connect button, always: as tall as the window leaves
+    # room for (190 px at 1080, 90 px at 800, none under ~710, so the button stays in view); hidden where the side bar becomes a
+    # top bar
+    e = sub1(r'<button id="connect"', f'{CATS_IMG}\n      <button id="connect"', e)
+    e = sub1(r"</head>", "<style>.devcard .cats { height: clamp(0px, calc(100vh - 710px), 190px); width: auto;"
+             " max-width: 100%; align-self: center; object-fit: contain; background: #000; border-radius: 8px; }"
+             " @media (max-width: 860px) { .devcard .cats { display: none; } }</style>\n</head>", e)
     ed.write_text(e, encoding="utf-8")
     print(f"smk_site.py: {ed}: {n} x FM-1 -> SMK-37")
