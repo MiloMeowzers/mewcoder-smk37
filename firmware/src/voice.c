@@ -666,6 +666,8 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
              * voices at most: the next note takes room from its own voices (a releasing one first, the quietest; else
              * the oldest held), faded as the budget's steal is (voice_kill) */
             uint32_t k = (uint32_t)(t - trk), cap = k < 3u ? hm_pcap[k] : 0u;
+            if (cap == HM_PCAP_AUTO)                    /* (AUTO: FM6 at 4, the other engines uncapped) */
+                cap = ENGINES[t->engine] == &ENG_FM6 ? HM_PCAP_FM6 : 0u;
             if (cap && cap <= HM_PCAP_MAX && (hm_on || (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW))) {
                 for (;;) {
                     uint32_t n = 0, j;

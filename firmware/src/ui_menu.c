@@ -465,6 +465,11 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         static char b[14];
         uint32_t k = i - MI_PC1, cp = hm_pcap[k];
         const track_t *t = &trk[k];
+        if (cp == HM_PCAP_AUTO) {                     /* AUTO: what it does now (4 on FM6, else none) */
+            int fm = ENGINES[t->engine] == &ENG_FM6;
+            *c = fm && (hm_on || (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW)) ? C_HI : C_DIM;
+            return fm ? "AUTO: 4" : "AUTO: OFF";
+        }
         int na = (k == 0u && hm_on) || VOC_TRK_AUDIO(t) || TRK_VMODE(t) != V_POLY;
         *c = !cp || na || cp >= NVOICE || !(hm_on || (VOC_AUDIO_ON && voc_mode % VM_N == VM_SAW)) ? C_DIM : C_HI;
         if (!cp)
@@ -1105,10 +1110,11 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_HNOTE:                                     /* (a readout) */
         break;
 #endif
-    case MI_PC1: case MI_PC2: case MI_PC3: {           /* right up, left down (OFF below 1); OCT+ back to OFF */
+    case MI_PC1: case MI_PC2: case MI_PC3: {           /* right up, left down: OFF, 1 .. 5, AUTO (the ends stop);
+                                                        * OCT+ back to AUTO */
         uint32_t k = i - MI_PC1;
-        int32_t v = s ? (int32_t)hm_pcap[k] + s : 0;
-        hm_pcap[k] = (uint8_t)(v < 0 ? 0 : v > (int32_t)HM_PCAP_MAX ? HM_PCAP_MAX : v);
+        int32_t v = s ? (int32_t)hm_pcap[k] + s : (int32_t)HM_PCAP_AUTO;
+        hm_pcap[k] = (uint8_t)(v < 0 ? 0 : v > (int32_t)HM_PCAP_AUTO ? HM_PCAP_AUTO : v);
         break;
     }
 #if SMK_HARM_BUILD

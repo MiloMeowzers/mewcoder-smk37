@@ -3426,7 +3426,8 @@ function makeMockDevice(opt = {}) {
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
     smkset: Uint8Array.from([0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),   /* project.c smkset_t */
     vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
-      const v = new Uint8Array(opt.harm ? 532 : 480);   /* (the harmoniser build: 532 bytes since POLY CAP) */
+      const v = new Uint8Array(532);                  /* (532 bytes since POLY CAP: both vocoder builds since the merge) */
+      v.set([6, 6, 6], 512);                          /* POLY CAP T1 .. T3: AUTO (FM6 at 4) */
       v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 7, 127, 0, 0, 0, 0, 2, 1, 0], 0);
       if (opt.harm === "on") v[478] = 1;              /* (?harm=on: HARMONY on) */
       v[476] = 1;                                     /* (mixv: DRY / HF on the 12-step scale) */
@@ -7925,7 +7926,10 @@ const OB = {
     ["eatt", 472, "ATTACK", ["3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"], 0],
     ["erel", 473, "RELEASE", ["8 MS", "15 MS", "25 MS", "40 MS", "60 MS", "100 MS"], 0],
     ["brmode", 477, "BRIDGE MODE", ["FIXED", "FOLLOW"], 0],
-    ["spair", 511, "STEREO PAIR (USB, SYNTHS+RET)", ["RET", "DRUMS", "T1", "T2", "T3"], 0]],
+    ["spair", 511, "STEREO PAIR (USB, SYNTHS+RET)", ["RET", "DRUMS", "T1", "T2", "T3"], 0],
+    ["pc0", 512, "POLY CAP: T1", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6],   /* (AUTO: 4 on FM6, else none) */
+    ["pc1", 513, "POLY CAP: T2", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6],
+    ["pc2", 514, "POLY CAP: T3", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6]],
   harm: [                                              /* the harmoniser (HOME > HARMONY, the load settings, the HARMONY
                                                           page, FADER BANK E / F: smk_harm.h, project.c vocset_t) */
     ["hon", 478, "HARMONY", ["OFF", "ON: T1"], 0],
@@ -7935,8 +7939,6 @@ const OB = {
     ["lt2", 478, "LANE THIN: T3", ["OFF", "ON"], 1], ["lt3", 478, "LANE THIN: DRUMS", ["OFF", "ON"], 0],
     ["lr0", 479, "LANE RATE: VOICE", ["44.1K", "22K"], 0], ["lr1", 479, "LANE RATE: T2", ["44.1K", "22K"], 0],
     ["lr2", 479, "LANE RATE: T3", ["44.1K", "22K"], 0], ["lr3", 479, "LANE RATE: DRUMS", ["44.1K", "22K"], 0],
-    ["pc0", 512, "POLY CAP: T1", ["OFF", "1", "2", "3", "4", "5"], 0], ["pc1", 513, "POLY CAP: T2", ["OFF", "1", "2", "3", "4", "5"], 0],
-    ["pc2", 514, "POLY CAP: T3", ["OFF", "1", "2", "3", "4", "5"], 0],
     ["hpit", 502, "PITCH (BANK E)", OB_PIT, 0], ["hfb", 503, "FEEDBACK (BANK E)", OB_PCT, 0],
     ["hvin", 505, "VOICE IN (BANK E)", OB_PCT, 100],
     ["hwd", 504, "T1 MIX (BANK F)", OB_PCT, 64], ["hs1", 506, "T2 MIX (BANK F)", OB_PCT, 0],

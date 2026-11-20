@@ -1090,7 +1090,7 @@ static void vocset_load(const project_t *p)
     if (p >= proj_slot && k < 4u && ((vocset.pchave >> k) & 1u)) {
         uint32_t j;
         for (j = 0; j < 3u; j++)
-            hm_pcap[j] = (uint8_t)(vocset.pcsec[k][j] > HM_PCAP_MAX ? 0u : vocset.pcsec[k][j]);
+            hm_pcap[j] = (uint8_t)(vocset.pcsec[k][j] > HM_PCAP_AUTO ? HM_PCAP_AUTO : vocset.pcsec[k][j]);
     }
 }
 static void vocset_drop(uint32_t slot)
@@ -1137,8 +1137,8 @@ static int vocset_take(const uint8_t *b, uint32_t n)
                                                          * §13v; older: 0 = the defaults) */
         hm_lrate = (uint8_t)(s.rsv3 & 15u), hm_lmono = (uint8_t)(!((s.rsv3 >> 4) & 1u));
 #endif
-        for (k = 0; k < 3u; k++)                       /* POLY CAP (§13w-2; older: OFF) */
-            hm_pcap[k] = (uint8_t)(s.pcap[k] > HM_PCAP_MAX ? 0u : s.pcap[k]);
+        for (k = 0; k < 3u; k++)                       /* POLY CAP (§13w-2; older, before it: AUTO, the default) */
+            hm_pcap[k] = (uint8_t)(n <= VOCSET_V7 || s.pcap[k] > HM_PCAP_AUTO ? HM_PCAP_AUTO : s.pcap[k]);
 #if SMK_HARM_BUILD
         if (s.hhave) {                                 /* the HARMONY page and banks E / F (older: as they are) */
             hset_t h;
