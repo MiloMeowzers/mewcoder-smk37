@@ -211,3 +211,4 @@ static void br_toggle(uint32_t k, int on)              /* top pads 5-8, FX CH no
  * on / off per track, bottom 1-4 the track the knobs set (held while a knob turns: all four), bottom 5-8 MUTE. Knobs:
  * SELECT OFFSET, ALGORITHM INTERVAL, PRESETS GRID, K1 CHANCE, K2 GATE, K3 DECAY, K4 WET / DRY, the volume knob PITCH */
 static uint8_t pg2_on, br_ksel, pg2_hold;
+static uint8_t pg2_last = 0xFFu;                        /* (its screen: the setting turned last, lit) */
