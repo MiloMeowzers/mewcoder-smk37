@@ -41,8 +41,8 @@ enum { MI_COLOR, MI_ZOOM,
        MI_PFADE,                                   /* SMK-37: PUNCH > FADE (GLO G_FXFADE: as SELECT on the FX page) */
        MI_XFADE,                                   /* SMK-37: PUNCH > XFADE (smk_tpunch.h tp_xfl, live) */
        MI_CURVE,                                   /* SMK-37: PUNCH > CURVE (smk_tpunch.h tp_lin, live) */
-       MI_RTRIP, MI_RVAR, MI_FDLY,                 /* SMK-37: PUNCH 2 > TRIPLETS, VARIATION (BEAT REPEAT, smk_brep.h),
-                                                    * FREEZE DELAY (punch.c frz_q); kept, smkset */
+       MI_RTRIP, MI_RVAR,                          /* SMK-37: PUNCH 2 > TRIPLETS, VARIATION (BEAT REPEAT, smk_brep.h);
+                                                    * kept, smkset (FREEZE DELAY: gone, 2026-11-21) */
 #if SMK_UAC_IN_PROBE
        MI_VSETUP, MI_VCARR, MI_VINL, MI_VINR,      /* the vocoder build: SETUP > SETUP, CARRIER, IN L, IN R
                                                     * (smk_vocoder.h; kept, project.c) */
@@ -115,7 +115,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "FILTER RESO",
 #if BOARD_SMK37
                                               "USB LAYOUT", "STEM RATE", "STEM FILTER", "STEREO PAIR",
-                                              "STEM FX", "FADE", "XFADE", "CURVE", "TRIPLETS", "VARIATION", "FREEZE DELAY",
+                                              "STEM FX", "FADE", "XFADE", "CURVE", "TRIPLETS", "VARIATION",
 #if SMK_UAC_IN_PROBE
                                               "SETUP", "CARRIER", "IN L", "IN R", "TRIM L", "TRIM R",
 #if !SMK_UAC_PROBE
@@ -431,8 +431,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         fmt_int(b, br_var);
         return b;
     }
-    case MI_FDLY:                                     /* FREEZE's own delay (a delay in use: its own time instead) */
-        return FRZ_DNAME[frz_q % FRZ_DN];
+
 #if SMK_UAC_IN_PROBE
     case MI_VCARR: {                                  /* the carrier: the saws, or a channel (dim: not vocoding; 2 SAWS
                                                        * in FULL: amber, one plays) */
@@ -1083,11 +1082,6 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_RVAR: {                                    /* 0 .. 10 (the ends stop); OCT+ back to 0 */
         int32_t v = s ? (int32_t)br_var + s : 0;
         br_var = (uint8_t)(v < 0 ? 0 : v > 10 ? 10 : v);
-        break;
-    }
-    case MI_FDLY: {                                    /* OFF, 1/8 .. 1/2 (the ends stop); OCT+ back to OFF */
-        int32_t v = s ? (int32_t)(frz_q % FRZ_DN) + (s > 0 ? 1 : -1) : (int32_t)FRZ_DQ_DEF;
-        frz_q = (uint8_t)(v < 0 ? 0 : v > (int32_t)FRZ_DN - 1 ? (int32_t)FRZ_DN - 1 : v);
         break;
     }
 #if SMK_UAC_IN_PROBE
