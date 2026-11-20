@@ -62,6 +62,13 @@ static struct {
 #endif
 } fx;
 static volatile uint8_t rev_frz;         /* punch-in FREEZE (punch.c): the reverb holds, no loss, no damping */
+#if BOARD_SMK37
+static volatile uint8_t frz_dly;         /* .. and the delay (punch.c punch_freeze_dly): 0 none, 1 its own time, 2 the
+                                          * delay in use, 3 none added (HARMONY's H949) */
+static uint32_t frz_dl;                  /* its own time (samples) */
+#define FRZ_DW(x) (frz_dly == 1u || frz_dly == 2u ? (x) >> 3 : 0)   /* (rev_l: the held delay beside the reverb, x 8 in
+                                          * FREEZE's play: punch.c) */
+#endif
 static int32_t rev_l[CTL], rev_r[CTL];   /* the reverb's own return of this block (FREEZE plays it) */
 
 /* DIST: low cut -> drive (1x..8x, exponential) -> asymmetric soft clip
@@ -393,6 +400,18 @@ static TAILINL void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const
 #else
     const uint32_t rc = 1, rd = 1, rr = 1;
 #endif
+#if BOARD_SMK37
+    if (rev_frz && (frz_dly == 1u || frz_dly == 2u)) {  /* (FREEZE: the delay held too, heard whatever its MIX) */
+#if SMK_VOC_LEAN
+        rd = 1;
+#endif
+        fb = 32767, col = 32767;
+        if (frz_dly == 1u)
+            dl = frz_dl;
+        if (dmix < 64 * 258)
+            dmix = 64 * 258;
+    }
+#endif
     const uint32_t L0 = REV_LINE[0] + REV_MOD + 2u, B1 = L0, B2 = B1 + REV_LINE[1], B3 = B2 + REV_LINE[2];
     {   /* the chorus' two read points (Q8 samples back) and line 0's extra length, at both ends of the block */
         int32_t s0 = osc_sine(fx.cho_ph), s1, m0 = osc_sine(fx.rev_ph), m1;
@@ -407,6 +426,9 @@ static TAILINL void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const
     }
     for (i = 0; i < n; i++) {
         int32_t yl, yr, x, a, o0, o1, o2, o3;
+#if BOARD_SMK37
+        int32_t xdw = 0;                                /* (the delay's wet: FREEZE's, FRZ_DW) */
+#endif
         /* chorus: two modulated short delays, 5..15 ms, the LFO half a turn apart: left and right move apart */
         yl = yr = 0;
         if (rc) {
@@ -446,6 +468,9 @@ static TAILINL void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const
             fx.dly_w++;
             FXB_LOUD(ld, x);
             x = mulq15(x << 1, dmix);
+#if BOARD_SMK37
+            xdw = x;
+#endif
             yl += x;
             yr += x;
         }
@@ -507,8 +532,13 @@ static TAILINL void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const
         }
         wet_l[i] = yl + o0 + o2;
         wet_r[i] = yr + o1 - o3;
+#if BOARD_SMK37
+        rev_l[i] = o0 + o2 + FRZ_DW(xdw);
+        rev_r[i] = o1 - o3 + FRZ_DW(xdw);
+#else
         rev_l[i] = o0 + o2;
         rev_r[i] = o1 - o3;
+#endif
     }
 #if SMK_VOC_LEAN
     fxb_done(0, rc, lc, n);
@@ -2336,6 +2366,9 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
     TIM_VOC_T(tt);                                      /* (the console's timing: on either core, its own clock) */
 #endif
     punch_freeze_feed(acc[0].sr, mix_l, mix_r, n);     /* punch-in FREEZE: the whole dry mix into the held reverb */
+#if BOARD_SMK37
+    punch_freeze_dly(acc[0].sd, mix_l, mix_r, n);      /* .. and into the held delay */
+#endif
     fx_buses(acc[0].sc, acc[0].sd, acc[0].sr, wet_l, wet_r, n);
     for (i = 0; i < n; i++) {
         mix_l[i] += wet_l[i];
@@ -2410,7 +2443,7 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
                                                          * harmoniser-spec.md §13u-4a) */
                 dry = (15u & ~(1u << (smk_pair == SP_DRUMS ? 3u : (uint32_t)smk_pair - SP_T1))) | 48u;
             for (i = 0; i < n; i++) {
-                int32_t f = t0 + i < PX_FRZ_CAP ? (int32_t)((t0 + i) << 2) : 32767;
+                int32_t f = t0 + i < PX_FRZ_CAP ? (int32_t)((t0 + i) << PX_FRZ_SH) : 32767;
                 int32_t g = 32767 - (int32_t)(((int64_t)f * punch.g) >> 15);
                 for (c = 0; c < 6u; c++)
                     if ((dry >> c) & 1u)

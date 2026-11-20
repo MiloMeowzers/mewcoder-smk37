@@ -20,7 +20,14 @@ static const char *const PUNCH_NAME[PUNCH_NFX] = {
     "KILL LOW", "KILL MID", "KILL HIGH", "REWIND", "OCT UP", "FLANGER", "AUTO-PAN", "FREEZE", "LOOP 8T", "MONO",
     "FADE OUT"};
 #define PX_OCT_W 2048u                    /* OCT UP: the window of its two read taps (46 ms) */
+#if BOARD_SMK37
+#define PX_FRZ_CAP 16384u                 /* FREEZE: samples of the mix poured into the held reverb and delay (372 ms: the
+                                           * owner, 2026-11-20, smk37-devtools punch-page2-spec.md §4) */
+#define PX_FRZ_SH 1                       /* (the crossfade: PX_FRZ_CAP << PX_FRZ_SH = 32768) */
+#else
 #define PX_FRZ_CAP 8192u                  /* FREEZE: samples of the mix poured into the held reverb (186 ms) */
+#define PX_FRZ_SH 2
+#endif
 #define PX_RWD_ACC 17                     /* REWIND: speed change per sample (Q16): +1 to -3 in 0.35 s */
 #define PX_RWD_MAX (3 << 16)
 #if BOARD_SMK37
@@ -248,6 +255,45 @@ static TAILINL void punch_freeze_feed(int32_t *rev, const int32_t *l, const int3
                                                          * mulq15(rev_in, 13000): no overflow) */
 }
 
+#if BOARD_SMK37
+/* FREEZE brings its own delay (the owner, 2026-11-20; punch-page2-spec.md §4): while it plays the delay is fed the dry
+ * mix as the reverb is (its first PX_FRZ_CAP samples) and held (feedback at unity, no colour: fx.c fx_buses), heard
+ * whatever its MIX and the sends are. A delay already in use (MIX up and something sent to it) is held at its own time;
+ * with none, FREEZE DELAY's (HOME > PUNCH 2: 1/8 .. 1/2 at the tempo, 1/4 the default). HARMONY on: the H949 is the
+ * delay (T1's lane), FREEZE adds none of its own */
+static const uint8_t FRZ_DQ[5] = {2, 3, 4, 6, 8};       /* FREEZE DELAY: 1/8, 1/8., 1/4, 1/4., 1/2, in quarter beats */
+static const char *const FRZ_DNAME[5] = {"1/8", "1/8.", "1/4", "1/4.", "1/2"};
+#define FRZ_DQ_DEF 2u
+static uint8_t frz_q = FRZ_DQ_DEF;                      /* (project.c smkset pflags) */
+static TAILINL void punch_freeze_dly(int32_t *dly, const int32_t *l, const int32_t *r, uint32_t n)
+{
+    uint32_t i;
+    if (!rev_frz) {
+        frz_dly = 0;
+        return;
+    }
+    if (!frz_dly) {                                     /* the freeze begins: the delay in use, or its own */
+        uint32_t k, used = song.g[G_DRDLY] > 0, s;
+        for (k = 0; k < NPART; k++)
+            used |= trk[k].p[P_DLY] > 0;
+        used = used && song.g[G_DMIX] > 0;
+#ifdef SMK_HARM
+        if (hm_on && !used) {
+            frz_dly = 3;                                /* (HARMONY: the H949's; none added) */
+            return;
+        }
+#endif
+        frz_dly = used ? 2u : 1u;
+        s = beat_samples() * FRZ_DQ[frz_q % 5u] / 4u;
+        frz_dl = s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
+    }
+    if (frz_dly > 2u)
+        return;
+    for (i = 0; i < n; i++)
+        dly[i] = punch.t + i < PX_FRZ_CAP ? clamp(HALF0(dly[i]) + ((l[i] + r[i]) >> 4), -165000, 165000) : 0;
+}
+#endif
+
 /* l, r: the mix before the master (fx.c mix_block), n samples, in place */
 static TAILINL void punch_process(int32_t *l, int32_t *r, uint32_t n)
 {
@@ -415,7 +461,7 @@ static TAILINL void punch_process(int32_t *l, int32_t *r, uint32_t n)
             break;
         }
         case PX_FREEZE: {                               /* the held reverb (rev_l / rev_r), the dry mix fading under it */
-            int32_t c = punch.t < PX_FRZ_CAP ? (int32_t)(punch.t << 2) : 32767;   /* PX_FRZ_CAP << 2 = 32768 */
+            int32_t c = punch.t < PX_FRZ_CAP ? (int32_t)(punch.t << PX_FRZ_SH) : 32767;   /* PX_FRZ_CAP << PX_FRZ_SH = 32768 */
             int32_t fl = (rev_l[i & (CTL - 1u)] * punch.fg) >> 10, fr = (rev_r[i & (CTL - 1u)] * punch.fg) >> 10;
             wl = x + ((((fl - x) >> 3) * (c >> 3)) >> 9);
             wr = y + ((((fr - y) >> 3) * (c >> 3)) >> 9);
