@@ -5,15 +5,19 @@ This rewrites a built installer page (OUT_DIR/webapp/installer/index.html) for t
 its heading, its lead and tiles, and the FM-1's words in the messages (both languages); the FM-1 Transporter's
 recovery becomes the SMK-37's own (its USB recovery screen). SLOOP's web/ is not changed.
 
-  .github/smk_site.py OUT_DIR stems|mewcoder|harmoniser MODEL_NAME
+  .github/smk_site.py OUT_DIR stems|mewcoder|harmoniser MODEL_NAME [VERSION]
+
+(VERSION: the build's, e.g. 2.8.4-mewcoder-harmoniser-a8b1ae9: the editor's side bar names the build and shows it.)
 """
 import base64
+import html as htmlmod
 import re
 import shutil
 import sys
 from pathlib import Path
 
 out, build, model = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+version = sys.argv[4] if len(sys.argv) > 4 else ""
 page = out / "webapp" / "installer" / "index.html"
 html = page.read_text(encoding="utf-8")
 
@@ -78,6 +82,9 @@ MANUAL = {"stems": (f"{REPO}/blob/ci/SMK37.md", "The SMK-37 manual"),      # (Me
           "harmoniser": (f"{REPO}/blob/harmoniser/HARMONISER.md", "The harmoniser manual")}[build]   # branch)
 SITE = "https://milomeowzers.github.io/sloop-smk37/" + {"stems": "", "mewcoder": "mewcoder/webapp/installer/",
                                                         "harmoniser": "harmoniser/webapp/installer/"}[build]
+BNAME = {"stems": "Multichannel", "mewcoder": "Mewcoder", "harmoniser": "Mewcoder + Harmoniser"}[build]
+# "2.8.4-mewcoder-harmoniser-a8b1ae9" -> "2.8.4  a8b1ae9" (the boot screen's version line)
+VSHOW = f"{version.split('-')[0]}  {version.split('-')[-1]}" if "-" in version else version
 EDTITLE = {"stems": "SLOOP Editor: Multichannel USB audio", "mewcoder": "SLOOP Editor: Mewcoder",
            "harmoniser": "SLOOP Editor: Mewcoder + Harmoniser"}[build]
 SHOTS = {
@@ -191,6 +198,16 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
     # the manual, beside the installer link under the connect button
     e = sub1(r'(<a class="dim" href="[^"]*"(?: target="_blank" rel="noopener")? data-t="installer"></a>)',
              rf'\1<a class="dim" href="{MANUAL[0]}" target="_blank" rel="noopener">Manual</a>', e, expand=True)
+    # the side bar's top: the build's name and its version (as the keyboard's boot screen shows them: the "+" and the
+    # version in magenta), in place of SLOOP's logo and "editor"
+    e = sub1(r'<a class="brand" href="#sound" aria-label="SLOOP">.*?</a>',
+             f'<a class="brand smkb" href="#sound" aria-label="{htmlmod.escape(BNAME)}"><b>' +
+             BNAME.upper().replace(" + ", ' <i>+</i> ') + "</b>" +
+             (f"<small>{htmlmod.escape(VSHOW)}</small>" if VSHOW else "") + "</a>", e, re.S)
+    e = sub1(r"</head>", "<style>.brand.smkb { flex-direction: column; align-items: flex-start; gap: 4px; }"
+             " .smkb b { font-size: 15px; font-weight: 600; letter-spacing: .06em; line-height: 1.25; }"
+             " .smkb i { font-style: normal; color: #ff40ff; } .smkb small { font-size: 12px; color: #ff40ff; white-space: pre; }"
+             "</style>\n</head>", e)
     # the dancing cats at the foot of the device card, always, under its controls (hidden where the side bar becomes a
     # top bar)
     e = sub1(r"</div>\n  </aside>", f"  {CATS_IMG}\n    </div>\n  </aside>", e)
