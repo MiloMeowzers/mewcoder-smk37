@@ -32,7 +32,9 @@ typedef struct {
     uint32_t pulse_ms;                                  /* (the LEDs: the last INTERVAL) */
     struct { uint32_t off; uint8_t note, vel; } ev[BR_EV];
 } br_t;
-static br_t br[NTRK];
+static br_t br[NTRK] __attribute__((section(".pool")));   /* (the pool, not cleared at boot: br_block clears it
+                                                         * once; the harmoniser build's RAM is the tighter) */
+static uint8_t br_ready;
 static uint32_t br_rs = 0x2545F491u;
 static uint32_t br_rand(uint32_t m) { br_rs = br_rs * 1664525u + 1013904223u; return (br_rs >> 8) % (m ? m : 1u); }
 
@@ -86,6 +88,8 @@ static void br_stop(uint32_t k)
 static void br_reset(void)                              /* the transport starts, or stops */
 {
     uint32_t k;
+    if (!br_ready)
+        return;
     for (k = 0; k < NTRK; k++)
         br_stop(k);
 }
@@ -126,6 +130,10 @@ static void br_block(uint32_t adv)
 {
     uint64_t pos = br_now(), endb = pos + adv;
     uint32_t k, i;
+    if (!br_ready) {
+        memset(br, 0, sizeof br);
+        br_ready = 1;
+    }
     if (!song.playing) {
         for (k = 0; k < NTRK; k++)
             if (br[k].phase)
@@ -195,3 +203,9 @@ static void br_toggle(uint32_t k, int on)              /* top pads 5-8, FX CH no
     }
 }
 #define BR_NOTE0 84u                                    /* FX CH: 84..87 BEAT REPEAT T1..T4 (on while held) */
+
+/* the punch's page 2 (punch-page2-spec.md §1): < or > on the punch page (FX held or LOCKed) turns to it and back, in
+ * every layout; it closes with the punch page. Pads: top 1-4 the stems the punch acts on (tp_sel), top 5-8 BEAT REPEAT
+ * on / off per track, bottom 1-4 the track the knobs set (held while a knob turns: all four), bottom 5-8 MUTE. Knobs:
+ * SELECT OFFSET, ALGORITHM INTERVAL, PRESETS GRID, K1 CHANCE, K2 GATE, K3 DECAY, K4 WET / DRY, the volume knob PITCH */
+static uint8_t pg2_on, br_ksel, pg2_hold;

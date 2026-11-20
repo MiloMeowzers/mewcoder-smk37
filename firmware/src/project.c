@@ -899,6 +899,15 @@ static void smkset_fill(smkset_t *s)
     s->sqlb = (uint8_t)(sq_lb % SQ_LB_N);
     s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
     s->saver = (uint8_t)((cats_idle % CATS_IDLE_N) ^ CATS_IDLE_DEF);
+    s->pmask = (uint8_t)((tp_sel & 15u) ^ 15u);
+    s->pflags = (uint8_t)(!br_trip | ((frz_q % 5u) ^ FRZ_DQ_DEF) << 1);
+    s->rsv = br_var;
+    {
+        uint32_t k, i;
+        for (k = 0; k < NTRK; k++)
+            for (i = 0; i < BR_NS; i++)
+                s->br[k][i] = (uint8_t)(br_s[k][i] ^ BR_DEF[i]);
+    }
 #if SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
     s->spare = (uint8_t)(voc_gdel % 11u | (voc_saws % VCS_N) << 4);   /* GATE DELAY, CARRIER's saws (the vocoder
                                                      * build; 0 in the others) */
@@ -929,8 +938,18 @@ static int smkset_take(const uint8_t *b, uint32_t n)
         tp_xfl = (uint8_t)(s.xfl < TPX_N ? s.xfl : TPX_128);
         tp_lin = (uint8_t)(s.lin & 1u);
         if (n >= SMKSET_V3 + 4u) {                 /* (2026-11-20: the screensaver) */
-            uint32_t ix = (s.saver ^ CATS_IDLE_DEF) & 7u;
+            uint32_t ix = (s.saver ^ CATS_IDLE_DEF) & 7u, k, i;
             cats_idle = (uint8_t)(ix < CATS_IDLE_N ? ix : CATS_IDLE_DEF);
+            tp_sel = (uint8_t)((s.pmask ^ 15u) & 15u);  /* (the punch's page 2; older: the defaults) */
+            br_trip = (uint8_t)!(s.pflags & 1u);
+            ix = ((s.pflags >> 1) & 7u) ^ FRZ_DQ_DEF;
+            frz_q = (uint8_t)(ix < 5u ? ix : FRZ_DQ_DEF);
+            br_var = (uint8_t)(s.rsv <= 10u ? s.rsv : 0u);
+            for (k = 0; k < NTRK; k++)
+                for (i = 0; i < BR_NS; i++) {
+                    uint32_t v = s.br[k][i] ^ BR_DEF[i];
+                    br_s[k][i] = (uint8_t)(v > BR_MAX[i] ? BR_DEF[i] : i == BR_GATE && !v ? 1u : v);
+                }
         }
         if (n >= SMKSET_V3) {                      /* (an older record has none: the defaults stay) */
             sq_carry = (uint8_t)(s.sqcarry & 1u);

@@ -483,7 +483,7 @@ UI_SMALL static void chain_sub(char *sub, uint32_t n)
 static void pk_hold(void)
 {
     static uint8_t on, prev;
-    uint32_t want = ui.layer == LY_FX && knob_of(EN_MASTER) == 4u;
+    uint32_t want = ui.layer == LY_FX && (knob_of(EN_MASTER) == 4u || pg2_on);   /* (page 2: PITCH) */
     if (want && !on)
         prev = smk_master_hold, on = 1;
     if (want)
@@ -492,12 +492,57 @@ static void pk_hold(void)
         smk_master_hold = prev, on = 0;
 }
 #endif
+#if BOARD_SMK37
+/* page 2's knobs (smk_brep.h): BEAT REPEAT's settings for the track bottom 1-4 picked, or all four while its pad is
+ * held */
+static void pg2_set(uint32_t si, int32_t d)
+{
+    uint32_t k, all = (pg2_hold >> br_ksel) & 1u;
+    for (k = 0; k < NTRK; k++) {
+        int32_t v;
+        if (!all && k != br_ksel)
+            continue;
+        v = (int32_t)br_s[k][si] + d;
+        if (si == BR_GRID && !br_trip)                  /* (TRIPLETS off: 1/4 1/8 1/16 1/32 1/64) */
+            v = (int32_t)br_s[k][si] + (d > 0 ? 2 : d < 0 ? -2 : 0), v &= ~1;
+        v = v < (si == BR_GATE ? 1 : 0) ? (si == BR_GATE ? 1 : 0) : v > BR_MAX[si] ? BR_MAX[si] : v;
+        br_s[k][si] = (uint8_t)v;
+    }
+    if (all)
+        ui_message("ALL TRACKS");
+    ui.layer_used = 1;
+}
+static void pg2_knobs(void)
+{
+    int32_t s;
+    if ((s = panel_enc(EN_SELECT)) != 0)
+        pg2_set(BR_OFS, s > 0 ? 1 : -1);
+    if ((s = panel_enc(EN_ALGO)) != 0)
+        pg2_set(BR_IVAL, s > 0 ? 1 : -1);
+    if ((s = panel_enc(EN_PRESET)) != 0)
+        pg2_set(BR_GRID, s > 0 ? 1 : -1);
+    if ((s = panel_enc(EN_K1)) != 0)
+        pg2_set(BR_CHANCE, accel(EN_K1, s, 100));
+    if ((s = panel_enc(EN_K2)) != 0)
+        pg2_set(BR_GATE, s > 0 ? 1 : -1);
+    if ((s = panel_enc(EN_K3)) != 0)
+        pg2_set(BR_DECAY, accel(EN_K3, s, 100));
+    if ((s = panel_enc(EN_K4)) != 0)
+        pg2_set(BR_WD, accel(EN_K4, s, 100));
+    if ((s = fm1_enc_take(smk_master_enc % FM1_NENC) * smk_master_dir) != 0)   /* the volume knob (held here) */
+        pg2_set(BR_PITCH, s > 0 ? 1 : -1);
+}
+#endif
 UI_SMALL static void layer_knobs(uint32_t layer)
 {
     uint32_t k;
     int32_t s;
     track_t *t = TSEL;
 #if BOARD_SMK37
+    if (layer == LY_FX && pg2_on) {
+        pg2_knobs();
+        return;
+    }
     if (layer == LY_FX && tp_page_on()) {                /* the stem punch-in page: PRESETS LOOP BACK's length, ALGORITHM
                                                           * RAMP's grid (row 4; the knob stops at the ends). LOOP BACK
                                                           * held: its loop takes the new length at once */
@@ -838,6 +883,51 @@ UI_SMALL static void layer_screen_draw(void)
     switch (layer) {
     case LY_FX:                                         /* the 27 punch-in effects: 16 white keys, 11 black */
         col = TE_DRUM;
+#if BOARD_SMK37
+        if (pg2_on) {                                   /* page 2 (smk_brep.h) */
+            static const char *const TN[NTRK] = {"T1", "T2", "T3", "drums"};
+            static const char *const GN[9] = {"1/4", "1/6", "1/8", "1/12", "1/16", "1/24", "1/32", "1/48", "1/64"};
+            const uint8_t *bs = br_s[br_ksel % NTRK];
+            uint32_t k = br_ksel % NTRK;
+            for (i = 0; i < NTRK; i++) {
+                int on = (br_on >> i) & 1u, run = on && br_ready && br[i].phase;
+                str_cpy(tl[i].lab, TN[i], 8);
+                tl[i].bg = (tp_sel >> i) & 1u ? TE_COL[i] : TE_G1;
+                tl[i].fg = (tp_sel >> i) & 1u ? C_BLACK : TE_G3;
+                str_cpy(tl[4u + i].lab, "rpt ", 8);
+                str_cpy(tl[4u + i].lab + 4, i == TRK_DRUM ? "dr" : TN[i], 4);
+                tl[4u + i].bg = run ? C_WHITE : on ? TE_COL[i] : TE_G1;
+                tl[4u + i].fg = run || on ? C_BLACK : TE_G3;
+                str_cpy(tl[8u + i].lab, "set ", 8);
+                str_cpy(tl[8u + i].lab + 4, i == TRK_DRUM ? "dr" : TN[i], 4);
+                tl[8u + i].bg = i == k ? TE_COL[i] : TE_G1;
+                tl[8u + i].fg = i == k ? C_BLACK : TE_G3;
+                str_cpy(tl[12u + i].lab, (br_mute >> i) & 1u ? "muted" : "mute", 8);
+                tl[12u + i].bg = (br_mute >> i) & 1u ? TE_RED : TE_G1;
+                tl[12u + i].fg = (br_mute >> i) & 1u ? C_WHITE : TE_G3;
+            }
+            str_cpy(sub, BR_IVN[bs[BR_IVAL] & 7u], sizeof sub);   /* ALGORITHM, PRESETS, the volume knob, SELECT */
+            str_cpy(sub + str_len(sub), " ", 2);
+            str_cpy(sub + str_len(sub), GN[bs[BR_GRID] % 9u], 6);
+            str_cpy(sub + str_len(sub), " -", 3);
+            fmt_int(sub + str_len(sub), bs[BR_PITCH]);
+            str_cpy(sub + str_len(sub), "st +", 5);
+            fmt_int(sub + str_len(sub), bs[BR_OFS]);
+            str_cpy(sub + str_len(sub), "/16", 4);
+            str_cpy(hdr_r, "rpt ", sizeof hdr_r);
+            str_cpy(hdr_r + 4, k == TRK_DRUM ? "drums" : TN[k], 6);
+            lab[0] = "chance", lab[1] = "gate", lab[2] = "decay", lab[3] = "wet";
+            fmt_int(v[0], bs[BR_CHANCE]);
+            fmt_int(v[1], bs[BR_GATE]);
+            str_cpy(v[1] + str_len(v[1]), "/16", 4);
+            fmt_int(v[2], bs[BR_DECAY]);
+            fmt_int(v[3], bs[BR_WD]);
+            ratio[0] = bs[BR_CHANCE] * 10, ratio[1] = bs[BR_GATE] * 1000 / 64;
+            ratio[2] = bs[BR_DECAY] * 10, ratio[3] = bs[BR_WD] * 10;
+            col = TE_COL[k];
+            break;
+        }
+#endif
         str_cpy(sub, thr_req == 3u ? "rev + echo throw" : thr_req == 2u ? "echo throw" : thr_req ? "rev throw" : "hold + key",
                 sizeof sub);
 #if BOARD_SMK37
@@ -1202,7 +1292,7 @@ UI_SMALL static void layer_screen_draw(void)
     layer_title(LAYER_NAME[layer % LY_COUNT], sub, col, &head);
     if (layer == LY_FX
 #if BOARD_SMK37
-        && !tp_page_on()                                /* (the stem page: 12 tiles of the 16) */
+        && !tp_page_on() && !pg2_on                     /* (the stem page, page 2: tiles of the 16) */
 #endif
        )
         punch_tiles_draw(tl, &tiles);

@@ -330,7 +330,10 @@ UI_SMALL static void ui_leds(void)
     fm1_led[SMK_BTN_KNOB_BANK] = pick_pin || (int32_t)(fm1_ms - pick_k4_until) < 0;   /* KNOB BANK: picker pinned, PRESETS turning */
     smk_pad_pick = (uint16_t)(pick_shown() || VP_SHOWN() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
     smk_pad_grid = (uint8_t)padgrid_on();          /* (steps and tiles: reading order) */
-    smk_pad_pfx = (uint8_t)(ui.layer == LY_FX && tp_page_on());   /* (the stem punch-in page: the pads its own) */
+    if (ui.layer != LY_FX)
+        pg2_on = 0, pg2_hold = 0;                  /* (page 2 closes with the punch page) */
+    smk_pad_pfx = (uint8_t)(ui.layer == LY_FX && (tp_page_on() || pg2_on));   /* (the stem punch-in page, page 2: the
+                                                    * pads their own) */
     smk_pad_drums = (uint8_t)(!pad_steps && ui.layer == LY_PLAY && !smk_pad_grid && !VP_SHOWN());   /* the pads: DRUM KIT or STEPS */
     smk_pad_steps = (uint8_t)(pad_steps && ui.layer == LY_PLAY && !smk_pad_grid && !VP_SHOWN());
     if (!is_drum(TSEL) && TSEL->p[P_AMODE])        /* ARP lit while the selected track's arpeggiator runs */
@@ -363,6 +366,32 @@ UI_SMALL static void ui_leds(void)
                     padled_set(c, 0, 30, 0);
                 else
                     padled_set(c, 6, 6, 6);
+            }
+        } else if (ui.layer == LY_FX && pg2_on) {  /* page 2: the stems punched, BEAT REPEAT, the knobs' track, MUTE */
+            for (c = 0; c < NTRK; c++) {
+                const uint8_t *p = PAL[c];
+                int on = (br_on >> c) & 1u, run = on && br_ready && br[c].phase;
+                int pulse = on && br_ready && (uint32_t)(fm1_ms - br[c].pulse_ms) < 70u;
+                if ((tp_sel >> c) & 1u)
+                    padled_set(c, p[0], p[1], p[2]);
+                else
+                    padled_set(c, (uint8_t)(p[0] >> 3), (uint8_t)(p[1] >> 3), (uint8_t)(p[2] >> 3));
+                if (run)                           /* (repeating: bright white) */
+                    padled_set(4u + c, 200, 200, 200);
+                else if (pulse)                    /* (an INTERVAL: a short dim white) */
+                    padled_set(4u + c, 60, 60, 60);
+                else if (on)
+                    padled_set(4u + c, p[0], p[1], p[2]);
+                else
+                    padled_set(4u + c, (uint8_t)(p[0] >> 3), (uint8_t)(p[1] >> 3), (uint8_t)(p[2] >> 3));
+                if (c == br_ksel)
+                    padled_set(8u + c, p[0], p[1], p[2]);
+                else
+                    padled_set(8u + c, 6, 6, 6);
+                if ((br_mute >> c) & 1u)
+                    padled_set(12u + c, 110, 0, 0);
+                else
+                    padled_set(12u + c, 6, 6, 6);
             }
         } else if (ui.layer == LY_FX && tp_page_on()) {   /* the stem punch-in page: each pad dim in its kind's colour,
                                                     * the one playing white (as the tiles) */
@@ -1361,7 +1390,10 @@ UI_SMALL static void ui_input(void)
     if (pressed & (1u << SMK_BTN_LEFT | 1u << SMK_BTN_RIGHT)) {   /* < >: SEQ held: the step pages; the visualiser:
                                                                 * its style; else the pages, as SELECT (never the tempo) */
         int32_t d = (pressed >> SMK_BTN_RIGHT) & 1u ? 1 : -1;
-        if (pick_shown())
+        if (ui.layer == LY_FX) {                          /* the punch page: < or > turns to page 2 and back */
+            pg2_on = (uint8_t)!pg2_on;
+            pg2_hold = 0;
+        } else if (pick_shown())
             pick_turn(d);
         else if (fb_shown())                              /* the FADER BANK screen: the banks */
             fb_set(smk_fbank + (d > 0 ? 1u : FB_N - 1u));

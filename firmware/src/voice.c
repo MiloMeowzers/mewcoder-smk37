@@ -20,9 +20,6 @@ static uint32_t vage;                                   /* voice ages: one clock
 #elif BOARD_SMK37
 #include "smk_harm_off.h"     /* SMK-37, Mewcoder: the harmoniser left out, POLY CAP kept */
 #endif
-#if BOARD_SMK37
-#include "smk_brep.h"         /* SMK-37: BEAT REPEAT (the punch's page 2) */
-#endif
 /* the external carrier (IN L / IN R = CARRIER, vocoder-ui-spec.md §7j): the channel in place of the saws, gated by
  * track 3's notes as the built-in carrier is (any held: open in ~1.5 ms; all let go: GATE DELAY, then closed in ~12 ms:
  * the synth comes back through the DAW late). Its notes go out as MIDI on track 3's channel (seq.c, GLO > MIDI) */
@@ -620,6 +617,9 @@ static volatile uint32_t note_hits[NPART][4];
 /* the visualiser (ui_vis.c): the tracks a note started on (bit per track), each one's last note, a kick */
 static volatile uint8_t vis_hit, vis_kick_hit, vis_note[NTRK];
 
+#if BOARD_SMK37
+#include "smk_brep.h"         /* SMK-37: BEAT REPEAT (the punch's page 2) */
+#endif
 static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t any = 0, i, mode = TRK_VMODE(t);

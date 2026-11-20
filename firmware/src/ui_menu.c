@@ -41,6 +41,8 @@ enum { MI_COLOR, MI_ZOOM,
        MI_PFADE,                                   /* SMK-37: PUNCH > FADE (GLO G_FXFADE: as SELECT on the FX page) */
        MI_XFADE,                                   /* SMK-37: PUNCH > XFADE (smk_tpunch.h tp_xfl, live) */
        MI_CURVE,                                   /* SMK-37: PUNCH > CURVE (smk_tpunch.h tp_lin, live) */
+       MI_RTRIP, MI_RVAR, MI_FDLY,                 /* SMK-37: PUNCH 2 > TRIPLETS, VARIATION (BEAT REPEAT, smk_brep.h),
+                                                    * FREEZE DELAY (punch.c frz_q); kept, smkset */
 #if SMK_UAC_IN_PROBE
        MI_VSETUP, MI_VCARR, MI_VINL, MI_VINR,      /* the vocoder build: SETUP > SETUP, CARRIER, IN L, IN R
                                                     * (smk_vocoder.h; kept, project.c) */
@@ -113,7 +115,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "FILTER RESO",
 #if BOARD_SMK37
                                               "USB LAYOUT", "STEM RATE", "STEM FILTER", "STEREO PAIR",
-                                              "STEM FX", "FADE", "XFADE", "CURVE",
+                                              "STEM FX", "FADE", "XFADE", "CURVE", "TRIPLETS", "VARIATION", "FREEZE DELAY",
 #if SMK_UAC_IN_PROBE
                                               "SETUP", "CARRIER", "IN L", "IN R", "TRIM L", "TRIM R",
 #if !SMK_UAC_PROBE
@@ -138,37 +140,38 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
 #if SMK_UAC_IN_PROBE && !SMK_HARM_BUILD           /* Mewcoder: POLY CAP after ENVELOPE */
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_QUAL,
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_PUNCH2, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_QUAL,
        MS_ENV, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "PUNCH 2", "SETUP", "INPUT", "VOCODER",
                                               "CARRIER", "SILENCE", "BRIDGE TONE", "QUALITY", "ENVELOPE", "POLY CAP",
                                               "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_RTRIP, MI_VSETUP, MI_VTRL,
                                                MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VFHQ, MI_VEATT, MI_PC1, MI_ADV,
                                                MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
 #elif SMK_UAC_IN_PROBE
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_QUAL,
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_PUNCH2, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_QUAL,
        MS_ENV, MS_HARM, MS_LTHIN, MS_LRATE, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "PUNCH 2", "SETUP", "INPUT", "VOCODER",
                                               "CARRIER", "SILENCE", "BRIDGE TONE", "QUALITY", "ENVELOPE", "HARMONY", "LANE THIN",
                                               "LANE RATE", "POLY CAP", "SEQ", "PLAY", "MIDI",
                                               "DAW", "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_RTRIP, MI_VSETUP, MI_VTRL,
                                                MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VFHQ, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_PC1, MI_ADV,
                                                MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
 #else
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SEQ", "PLAY", "MIDI", "DAW",
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_PUNCH2, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "PUNCH 2", "SEQ", "PLAY", "MIDI", "DAW",
                                               "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_ADV, MI_VEL, MI_TRS,
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_RTRIP, MI_ADV, MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_ADV
 #endif
-_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
+_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_RTRIP - MI_SFX <= 4 &&
+               MI_VOC0 - MI_RTRIP <= 4 &&
 #if SMK_UAC_IN_PROBE && !SMK_HARM_BUILD
                MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VFHQ - MI_VTILT <= 4 && MI_VEATT - MI_VFHQ <= 4 && MI_PC1 - MI_VEATT <= 4 && MI_ADV - MI_PC1 <= 4 &&
 #elif SMK_UAC_IN_PROBE
@@ -421,6 +424,15 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_CURVE:
         *c = usb_layout_now() && stem_fx ? C_HI : C_DIM;
         return tp_lin ? "LINEAR" : "EQUAL";
+    case MI_RTRIP:                                    /* BEAT REPEAT's GRID with the triplets (Ableton's NO TRIPLETS) */
+        return br_trip ? "ON" : "OFF";
+    case MI_RVAR: {                                   /* each repeat's GRID at random around it, 0 .. 10 */
+        static char b[4];
+        fmt_int(b, br_var);
+        return b;
+    }
+    case MI_FDLY:                                     /* FREEZE's own delay (a delay in use: its own time instead) */
+        return FRZ_DNAME[frz_q % 5u];
 #if SMK_UAC_IN_PROBE
     case MI_VCARR: {                                  /* the carrier: the saws, or a channel (dim: not vocoding; 2 SAWS
                                                        * in FULL: amber, one plays) */
@@ -1065,6 +1077,19 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_CURVE:                                     /* right LINEAR, left EQUAL; OCT+ toggles */
         tp_lin = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !tp_lin);
         break;
+    case MI_RTRIP:                                     /* right ON, left OFF; OCT+ toggles */
+        br_trip = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !br_trip);
+        break;
+    case MI_RVAR: {                                    /* 0 .. 10 (the ends stop); OCT+ back to 0 */
+        int32_t v = s ? (int32_t)br_var + s : 0;
+        br_var = (uint8_t)(v < 0 ? 0 : v > 10 ? 10 : v);
+        break;
+    }
+    case MI_FDLY: {                                    /* 1/8 .. 1/2 (the ends stop); OCT+ back to 1/4 */
+        int32_t v = s ? (int32_t)(frz_q % 5u) + (s > 0 ? 1 : -1) : (int32_t)FRZ_DQ_DEF;
+        frz_q = (uint8_t)(v < 0 ? 0 : v > 4 ? 4 : v);
+        break;
+    }
 #if SMK_UAC_IN_PROBE
     case MI_VCARR: {                                   /* AUTO .. EXT R (stops at the ends); OCT+ back to AUTO. EXT L / R
                                                         * set that channel to CARRIER (the other one off it: OFF); the

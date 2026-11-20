@@ -2268,9 +2268,39 @@ static void punch_midi_on(uint32_t k)
 static uint8_t pfx_pad_held;                      /* the pad holding it, + 1 (0: none) */
 static uint8_t sq_out_vel[SQ_N];                  /* row 4: the note on sent on FX CH (its velocity, 0: none) */
 static uint8_t sq_out_ch[SQ_N];
+static void pg2_pad(uint32_t c, uint32_t v)             /* page 2 (smk_brep.h): the toggles act on the press */
+{
+    uint32_t k = c & 3u;
+    int32_t ch = song.g[G_FXCH];
+    if (c >= 8u && c < 12u) {                           /* bottom 1-4: the knobs' track (held: a turn sets all four) */
+        if (v)
+            pg2_hold |= (uint8_t)(1u << k), br_ksel = (uint8_t)k;
+        else
+            pg2_hold &= (uint8_t)~(1u << k);
+        return;
+    }
+    if (!v || c >= 16u)
+        return;
+    if (c < 4u) {                                       /* top 1-4: the stems the punch acts on */
+        tp_sel ^= (uint8_t)(1u << k);
+    } else if (c < 8u) {                                /* top 5-8: BEAT REPEAT on / off (FX CH 84 .. 87 held) */
+        int on = !((br_on >> k) & 1u);
+        br_toggle(k, on);
+        if (ch >= 1 && ch <= 16)
+            midi_out_note((uint32_t)(ch - 1), BR_NOTE0 + k, on ? 100u : 0u);
+    } else {                                            /* bottom 5-8: MUTE (the repeats playing end first) */
+        if (!((br_mute >> k) & 1u) && br_ready)
+            br_offs(k);
+        br_mute ^= (uint8_t)(1u << k);
+    }                                                   /* (the screen follows: its tiles' signature) */
+}
 static void pfx_pad(uint32_t c, uint32_t v)
 {
     uint32_t fx;
+    if (pg2_on) {
+        pg2_pad(c, v);
+        return;
+    }
     if (c >= TP_PAGE_N && c < TP_PAGE_N + SQ_N) {     /* row 4: FLIP, LOOP BACK, RAMP UP, RAMP DOWN, with the page's
                                                        * settings; out on FX CH as 80..83, the setting + 1 the velocity */
         uint32_t k = c - TP_PAGE_N, s = sq_setting(k);
