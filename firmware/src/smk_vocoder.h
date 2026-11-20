@@ -258,9 +258,14 @@ _Static_assert(VOC_HN >= 4u * VOC_HB && VOC_ON >= 2u * VOC_HB && !(VOC_HN & (VOC
 /* a band's two sections' state: x its input, y the first's output (the second's input: its history is y's, kept once), z
  * the second's; each the last two */
 typedef struct { int32_t x1, x2, y1, y2, z1, z2; } voc_bq;
+/* the smoother envelopes (the owner, 2026-11-20, from the listening set vocoder-listening B: the new default sound, every
+ * SETUP): a second one-pole, ~60 Hz at 22.05 kHz, after each band's envelope: the full-wave rectifier's ripple on the
+ * bands below 1 kHz halves (8-17 % -> 4-8 %, measured on a held low vowel), the words' attacks ~3 ms later */
+#define VOC_ENV2_K 1111                  /* (Q16: 1 - exp(-2 pi 59.5 / 22050)) */
 static struct {                          /* the analysis (core 0, fx.c mix_block): the voice */
     voc_bq a[VOC_NB];                    /* the bands */
     int32_t env[VOC_NB];                 /* the band envelopes, Q19 */
+    int32_t env2[VOC_NB];                /* .. smoothed again (VOC_ENV2_K): what the synthesis gets */
     int32_t vh[VOC_HN];                  /* the last samples at 44.1 kHz (the decimator) */
     uint32_t hw;
     int32_t peak_in;
@@ -429,7 +434,8 @@ static void voc_analyse(uint32_t n)
         for (k = 0; k < VOC_NB; k++) {
             int32_t ya = voc_band(v, VOC_B0[k], VOC_B0[k], VOC_C1[k], VOC_A2[k], &voa.a[k]);
             voa.env[k] = voc_env_k(voa.env[k], ya, eka, ekr);   /* (ya: Q19; ENVELOPE's times) */
-            voc_ab[voc_aw].env[j][k] = voa.env[k] >> 4;  /* (Q15) */
+            voa.env2[k] += (int32_t)(((int64_t)(voa.env[k] - voa.env2[k]) * VOC_ENV2_K) >> 16);
+            voc_ab[voc_aw].env[j][k] = voa.env2[k] >> 4;   /* (Q15) */
             if (afast) {
                 if (k >= VOC_HF0)
                     hf += ya;                            /* the speech addition: the voice's top bands */
@@ -484,6 +490,7 @@ static void voc_analyse(uint32_t n)
     } else if (!voa.rest && voa.quiet >= VOC_REST_N) {   /* a pause long enough: the bands rest, their state cleared */
         memset(voa.a, 0, sizeof voa.a);
         memset(voa.env, 0, sizeof voa.env);
+        memset(voa.env2, 0, sizeof voa.env2);
         voa.lp1 = voa.lp2 = voa.env0 = 0;
         voa.rest = 1;
         voa.rest_zero = 2;
