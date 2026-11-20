@@ -2,7 +2,7 @@
  * SMK-37 Pro: Copyright (C) 2026 M. Geisler (genkigenki/makkuro) */
 /* The FADER BANK screen: the four banks, the active one lit, what faders 1..4 set (track colours).
  * FADER BANK opens it and then steps the bank, as < > and SELECT (K2, or K6) do; PATCH closes it, or it closes by itself. */
-static const char *const FB_NAME[6] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HARM", "LANE"};   /* (SEND: SENDS was wider than
+static const char *const FB_NAME[7] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HARM", "LANE", "IN"};   /* (SEND: SENDS was wider than
                                                     * a sixth of the screen) */
 static const param_desc_t FB_NONE = {"--", F_PCT, 0, 0, 0, 0, 0};   /* (a fader with nothing to set: min == max) */
 /* (FB_N, the banks, and the pin and PICKUP state: ui_input.c; a test that includes this file alone: four banks, and
@@ -106,6 +106,16 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
             *vp = &hm_fb;
         }
         return &PCT;
+    }
+    if (b == 6u) {                                 /* G, LANE IN (§14): each lane's input level (T1's: VOICE IN) */
+        static const param_desc_t LIN = {"IN", F_DB, 0, 127, HM_LIN_0, 0, 0}, VIN = {"VOICE", F_PCT, 0, 127, 0, 0, 0};
+        if (i == 0u) {
+            hv[0] = (int16_t)hm_send[0];
+            *vp = &hv[0];
+            return &VIN;
+        }
+        *vp = &hm_lin[i & 3u];
+        return &LIN;
     }
     if (b == 5u) {                                 /* F, SENDS: T2, T3, the drums into the harmoniser (T1: it) */
         static const param_desc_t SND = {"MIX", F_PCT, 0, 127, 0, 0, 0};   /* (each track's dry / harmony balance:

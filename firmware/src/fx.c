@@ -995,6 +995,7 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
     int32_t *pl = 0, *pr = 0;
     hm_lane_t *L = &hm_ln[k % HL_N];
     uint32_t i, mo = (hm_lmask >> (k % HL_N)) & 1u;    /* (§13v-6) */
+    const int32_t li = k == HL_VOICE ? 4096 : (int32_t)LEVEL_Q12[hm_lin[k % HL_N] & 127];   /* (LANE IN, §14) */
     if (n > VOC_MAXN)
         n = VOC_MAXN;
     if (!L->run || !L->rok)                             /* (§13c: the send and the dry's share ramped across the block) */
@@ -1003,7 +1004,8 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
     {
         uint32_t loud = 0;                              /* (§13f: the dry above the floor this block) */
         for (i = 0; i < n; i++) {
-            in[i] = hm_in1(x[i]);                       /* (§13o: at unity; VOICE's level: VOICE IN, in the engine) */
+            in[i] = (hm_in1(x[i]) * li) >> (12 + HM_HEAD);   /* (§13o: at unity, now LANE IN's level (VOICE's: VOICE IN, in
+                                                         * the engine) and the headroom's 6 dB down, §14) */
             loud |= (uint32_t)(x[i] > 8 || x[i] < -8);
         }
 #if BOARD_SMK37
@@ -1038,7 +1040,7 @@ static void hm_insert(uint32_t k, const int32_t *x, uint32_t n, mixacc_t *mx, in
         /* (Build 1.2: the blend, LEVEL and mute x DUCK folded into one gain a path, Q15: one product each instead of
          * three; within 1 LSB of the three in turn) */
         int32_t gd = (int32_t)(((int64_t)((kq * (int64_t)lv) >> 12) * gp) >> 15);
-        int32_t gw = (int32_t)(((int64_t)((wq * (int64_t)lv) >> 12) * gp) >> 15);
+        int32_t gw = (int32_t)(((int64_t)((wq * (int64_t)lv) >> 12) * gp) >> 15) << HM_HEAD;   /* (the headroom back) */
         int32_t xd = hm_sc(x[i], gd), vl = hm_sc(VOC_VS(wl[i]), gw), vr = hm_sc(VOC_VS(wr[i]), gw);
         int32_t m = xd + ((vl + vr) >> 1), xs, gl, gr, ol, orr, a, dq = 32768, e = 0;
 #if BOARD_SMK37
@@ -1669,7 +1671,8 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 sg0 = L->rsg, kd0 = L->rkd, L->rsg = sg, L->rkd = kd;
                 for (i = 0; i < n; i++) {
                     int32_t kx = (dk.l[i] >> 1) + (dk.r[i] >> 1);
-                    in[i] = hm_in1(kx);                 /* (§13o: at unity) */
+                    in[i] = (hm_in1(kx) * (int32_t)LEVEL_Q12[hm_lin[HL_DRUM] & 127]) >> (12 + HM_HEAD);   /* (LANE IN, the
+                                                         * headroom, §14) */
                     loud |= (uint32_t)(kx > 8 || kx < -8);
                 }
                 TIM_LAP(TS_DPRE, td);
@@ -1696,13 +1699,14 @@ static void mix_units(uint32_t mask, uint32_t n, mixacc_t *mx, int32_t *scratch)
                 {
                 const uint32_t rest = !dd && kd0 == kd && sg0 == sg;   /* (§13s: nothing ramping, the two gains the
                                                          * same every sample: worked out once, the same values) */
-                const int32_t gd1 = (int32_t)(((int64_t)kd * d0) >> 15), gw1 = (int32_t)(((int64_t)sg * d0) >> 15);
+                const int32_t gd1 = (int32_t)(((int64_t)kd * d0) >> 15),
+                              gw1 = (int32_t)(((int64_t)sg * d0) >> 15) << HM_HEAD;   /* (the headroom back, §14) */
                 for (i = 0; i < n; i++) {
                     int32_t gd = gd1, gw = gw1, ol, orr;
                     if (!rest) {
                         int32_t g = d0 + dd * (int32_t)i, kq = kd0 + (((kd - kd0) * (int32_t)i) >> 5);
                         int32_t wq = sg0 + (((sg - sg0) * (int32_t)i) >> 5);   /* (§13o: the harmony's share) */
-                        gd = (int32_t)(((int64_t)kq * g) >> 15), gw = (int32_t)(((int64_t)wq * g) >> 15);   /* (Build
+                        gd = (int32_t)(((int64_t)kq * g) >> 15), gw = (int32_t)(((int64_t)wq * g) >> 15) << HM_HEAD;   /* (Build
                                                          * 1.2: the blend and DRUMS folded, one product a path) */
                     }
                     int32_t dq = 32768, e = 0;
@@ -2209,6 +2213,7 @@ static void mix_block(int32_t *out, uint32_t n)
         tp_live = 0;
         if (tp_on && n <= CTL)
             tp_block(n, punch.req);
+        punch_freeze_prep();                            /* (FREEZE's delay, worked out here: punch.c) */
     }
 #endif
     TIM_MARK(TS_PTP);

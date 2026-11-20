@@ -267,6 +267,28 @@ static const char *const FRZ_DNAME[FRZ_DN] = {"OFF", "1/8", "1/8.", "1/4", "1/4.
 #define FRZ_DQ_DEF 0u                                   /* OFF (the owner, 2026-11-20: the held delay's 1/4 pulsed, FREEZE
                                                          * was more usable without it) */
 static uint8_t frz_q = FRZ_DQ_DEF;                      /* (project.c smkset pflags) */
+static volatile uint8_t frz_next;                       /* what a FREEZE starting now holds (frz_dly's values) .. */
+static volatile uint32_t frz_next_dl;                   /* .. its own delay's time */
+/* core 0, every block (fx.c, before the tail): what a FREEZE would hold now. Worked out here, in the flash, so the
+ * tail's RAM code (mix_tail) carries none of it: a73322e's 284 more bytes there went with the stems' underruns and
+ * a weaker punch; test A (c83700b, without them) was clean and punched best (the owner, 2026-11-21) */
+static void punch_freeze_prep(void)
+{
+    uint32_t k, used = song.g[G_DRDLY] > 0, s;
+    uint32_t q = FRZ_DQ[frz_q % FRZ_DN];
+    for (k = 0; k < NPART; k++)
+        used |= trk[k].p[P_DLY] > 0;
+    used = used && song.g[G_DMIX] > 0;
+    s = beat_samples() * (q ? q : 4u) / 4u;
+    frz_next_dl = s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
+#ifdef SMK_HARM
+    if (hm_on && !used) {
+        frz_next = 3;                                   /* (HARMONY: the H949's; none added) */
+        return;
+    }
+#endif
+    frz_next = !q ? 3u : used ? 2u : 1u;                /* (FREEZE DELAY OFF: no delay held, as before) */
+}
 static TAILINL void punch_freeze_dly(int32_t *dly, const int32_t *l, const int32_t *r, uint32_t n)
 {
     uint32_t i;
@@ -274,25 +296,8 @@ static TAILINL void punch_freeze_dly(int32_t *dly, const int32_t *l, const int32
         frz_dly = 0;
         return;
     }
-    if (!frz_dly && !(frz_q % FRZ_DN)) {               /* (FREEZE DELAY OFF: no delay held, as before) */
-        frz_dly = 3;
-        return;
-    }
-    if (!frz_dly) {                                     /* the freeze begins: the delay in use, or its own */
-        uint32_t k, used = song.g[G_DRDLY] > 0, s;
-        for (k = 0; k < NPART; k++)
-            used |= trk[k].p[P_DLY] > 0;
-        used = used && song.g[G_DMIX] > 0;
-#ifdef SMK_HARM
-        if (hm_on && !used) {
-            frz_dly = 3;                                /* (HARMONY: the H949's; none added) */
-            return;
-        }
-#endif
-        frz_dly = used ? 2u : 1u;
-        s = beat_samples() * FRZ_DQ[frz_q % FRZ_DN] / 4u;
-        frz_dl = s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
-    }
+    if (!frz_dly)                                       /* the freeze begins: as core 0 worked it out */
+        frz_dly = frz_next, frz_dl = frz_next_dl;
     if (frz_dly > 2u)
         return;
     for (i = 0; i < n; i++)

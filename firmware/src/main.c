@@ -319,6 +319,12 @@ static void smk_faders(void)
                 fb_lrate_set(v);
             }
             break;
+        case 6:                                       /* G, LANE IN (§14): each lane's input (T1: VOICE IN) */
+            if (i == 0u)
+                hm_send[0] = (uint8_t)(v > 127u ? 127u : v);
+            else
+                hm_lin[i & 3u] = (int16_t)(v > 127u ? 127u : v);
+            break;
         case 5:                                       /* F, MIX: each track's dry / harmony balance (T1: hm_wd) */
             if (i)
                 hm_send[i & 3u] = (uint8_t)(v > 127u ? 127u : v);
