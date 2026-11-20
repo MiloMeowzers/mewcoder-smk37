@@ -242,6 +242,9 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
     e = sub1(r'<button id="connect"', f'{CATS_IMG}\n      <button id="connect"', e)
     e = sub1(r"</head>", "<style>.devcard .cats { height: clamp(0px, calc(100vh - 710px), 190px); width: auto;"
              " max-width: 100%; align-self: center; object-fit: contain; background: #000; border-radius: 8px; }"
-             " @media (max-width: 860px) { .devcard .cats { display: none; } }</style>\n</head>", e)
+             " @media (max-width: 860px) { .devcard .cats { display: none; } }"
+             # the connect button in the cats' cyan, as the installer's install button (white under the pointer)
+             f" button#connect.pri:not(:disabled) {{ background: {CYAN}; }}"
+             " button#connect.pri:hover:not(:disabled) { background: var(--fg); }</style>\n</head>", e)
     ed.write_text(e, encoding="utf-8")
     print(f"smk_site.py: {ed}: {n} x FM-1 -> SMK-37")
