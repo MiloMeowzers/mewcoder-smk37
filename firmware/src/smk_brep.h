@@ -59,7 +59,7 @@ static uint32_t br_glen(uint32_t k)                     /* a repeat's GRID: VARI
         gi = gi < 0 ? 0 : gi > 8 ? 8 : gi;
         gi = (int32_t)br_grid_ix((uint32_t)gi);
     }
-    return (uint32_t)((uint64_t)BEAT_U * 4u / BR_GRIDN[gi]);
+    return BEAT_U * 4u / BR_GRIDN[gi];                  /* (32 bit: the chip has no 64-bit divide in its library) */
 }
 static uint32_t br_note_of(uint32_t k, uint32_t note, uint32_t shift)   /* PITCH: lower each repeat (the drums as they are) */
 {
@@ -143,15 +143,17 @@ static void br_block(uint32_t adv)
     for (k = 0; k < NTRK; k++) {
         br_t *b = &br[k];
         const uint8_t *s = br_s[k];
-        uint64_t iv = (uint64_t)BEAT_U * BR_IV32[s[BR_IVAL] & 7u] / 8u, of = (uint64_t)BEAT_U * (s[BR_OFS] & 15u) / 4u, nb;
+        uint32_t q = BR_IV32[s[BR_IVAL] & 7u], o32 = (2u * (s[BR_OFS] & 15u)) % q, m, u32 = BEAT_U / 8u;   /* (in 1/32
+                                                         * notes: no 64-bit divide) */
+        uint64_t nb;
         if (!((br_on >> k) & 1u)) {
             if (b->phase)
                 br_stop(k);
             continue;
         }
-        of %= iv;
-        nb = pos <= of ? of : of + (pos - of + iv - 1u) / iv * iv;   /* the first INTERVAL boundary at or after pos */
-        for (; nb < endb; nb += iv) {
+        m = clk_beat * 8u + clk_pos / u32 + (clk_pos % u32 ? 1u : 0u);   /* the first 1/32 at or after pos */
+        m += (q - (m + q - o32) % q) % q;               /* .. the first INTERVAL boundary from there */
+        for (nb = (uint64_t)m * u32; nb < endb; m += q, nb = (uint64_t)m * u32) {
             b->pulse_ms = fm1_ms;
             if (!b->phase && br_rand(100u) < s[BR_CHANCE]) {   /* CHANCE: the capture begins */
                 b->phase = 1, b->n = 0, b->k = 0, b->shift = 0, b->vg = 32768;
