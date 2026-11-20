@@ -24,7 +24,9 @@
 enum { G_BPM, G_FXFADE, G_N };
 static struct { int32_t g[G_N]; uint8_t playing; } song;
 static uint32_t clk_pos;
+#define TP_EXTRA 0u
 static int16_t smk_fxpool[NTRK * SL_LEN + PUNCH_N];
+static uint8_t stem_layout;
 static uint8_t sl_mem_lent;
 static struct { uint32_t loop, rec_on, rec, w; } sl[NTRK];
 static struct { int8_t cur; int32_t g; uint32_t w; } punch;
@@ -63,7 +65,7 @@ static uint32_t run(uint32_t mode, uint32_t layout, int32_t bpm, int32_t fx, uin
     tp.mode = 0xFFu, tp.cur = -1;
     song.g[G_BPM] = bpm, song.g[G_FXFADE] = 0;
     song.playing = ph >= 0, clk_pos = ph >= 0 ? (uint32_t)ph * (uint32_t)bpm : 0u;   /* (clk_samples: clk_pos / BPM) */
-    tp_setup(mode, layout);
+    tp_setup(mode, layout, 15u);
     *checked = 0;
     for (b = 0; b < 4000u + blocks; b++) {      /* (4000 blocks: every ring full before the effect) */
         int32_t want = b >= 4000u ? fx : -1;
@@ -107,7 +109,7 @@ static double seam_level(uint32_t mode, int32_t fx)
     memset(&tp, 0, sizeof tp);
     tp.mode = 0xFFu, tp.cur = -1;
     song.g[G_BPM] = 120, song.g[G_FXFADE] = 0, song.playing = 0, clk_pos = 0;
-    tp_setup(mode, 1u);
+    tp_setup(mode, 1u, 15u);
     for (b = 0; b < 1400u + 6000u; b++) {
         tp_block(CTL, b >= 1400u ? fx : -1);
         for (i = 0; i < CTL; i++, u++) {
@@ -150,7 +152,7 @@ static double stitch_level(uint32_t mode, uint32_t lin, int32_t fx)
     tp.mode = 0xFFu, tp.cur = -1;
     tp_lin = (uint8_t)lin, tp_xfl = TPX_128;
     song.g[G_BPM] = 120, song.g[G_FXFADE] = 0, song.playing = 0, clk_pos = 0;
-    tp_setup(mode, 1u);
+    tp_setup(mode, 1u, 15u);
     for (b = 0; b < 1400u + 4000u; b++) {
         tp_block(CTL, b >= 1400u && (b / 10u) % 2u ? fx : -1);
         for (i = 0; i < CTL; i++, u++) {
@@ -235,6 +237,22 @@ int main(void)
         snprintf(what, sizeof what, "rapid REVERSE punches %s: the quietest window %.2f of the mean EQUAL, %.2f LINEAR, %.2f none",
                  mode == SFX_HQ ? "HQ" : "PUNCH", eq, li, no);
         check(what, eq >= li && eq > 0.75 * no);
+    }
+    {   /* the stems chosen (page 2): the drums alone in SYNTHS+RET take every ring's memory, the others pass dry */
+        uint32_t i, dry = 1;
+        tp_setup(SFX_PUNCH, 2u, 8u);
+        for (i = 0; i < 64u; i++)
+            dry &= tp_x(0u, i % CTL, (int32_t)i * 100) == (int32_t)i * 100 && tp_x(2u, i % CTL, 7) == 7;
+        check("the drums alone (SYNTHS+RET): one ring of all the stems' memory, T1 / T3 dry with no ring",
+              tp_ring[3] && !tp_ring[0] && !tp_ring[1] && !tp_ring[2] && tp.cap == TP_POOL - TP_MRING && dry);
+        tp_setup(SFX_PUNCH, 1u, 5u);                   /* T1 + T3 of DRUMS+RET's 7 */
+        check("T1 + T3 chosen (DRUMS+RET): two rings, half the memory each, the drum groups none",
+              tp_ring[0] && !tp_ring[1] && tp_ring[2] && !tp_ring[3] && !tp_ring[6] && tp.cap == (TP_POOL - TP_MRING) / 2u);
+        tp_setup(SFX_SLICER, 0u, 6u);                  /* the single out, T2 + T3: rings even with STEM FX at SLICER */
+        check("the single out with T2 + T3 chosen: their rings (PUNCH), the master's short ring", tp_on && tp_ring[1] &&
+              tp_ring[2] && !tp_ring[0] && !tp_ring[3] && tp.s == 2u && punch_cap == TP_MRING);
+        tp_setup(SFX_SLICER, 0u, 15u);
+        check("the single out with all chosen: the master's whole ring, as before", !tp_on && punch_cap == PUNCH_N);
     }
     printf(fails ? "SMK TPUNCH TEST FAILED (%d)\n" : "smk_tpunch: all ok\n", fails);
     return fails != 0;

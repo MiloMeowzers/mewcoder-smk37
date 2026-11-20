@@ -2163,16 +2163,18 @@ static void mix_block(int32_t *out, uint32_t n)
 #if BOARD_SMK37
     {   /* STEM FX: the memory shared out again when the mode changes (the menu's STEM FX, live), the stems' punch-ins'
          * timeline for this block */
-        uint32_t mode = (stem_fx % SFX_N) | (uint32_t)stem_layout << 2;
+        uint32_t mode = (stem_fx % SFX_N) | (uint32_t)stem_layout << 2, sel = tp_sel & 15u;
 #ifdef SMK_HARM
         mode |= (uint32_t)hm_on << 4;                   /* (HARMONY takes the pool's start: smk_tpunch.h TP_HM) */
 #endif
-        if (mode != tp.mode) {
+        if ((mode != tp.mode || sel != tp.sel) &&
+            (mode != tp.mode || (tp.cur < 0 && punch.cur < 0 && punch.req < 0))) {   /* (the stems chosen anew: once no
+                                                         * punch plays, so none is cut short) */
 #if MIX_PIPE
             mix_tail_wait();                            /* (the punch-in's ring and state: the tail's) */
 #endif
-            tp_setup(stem_fx % SFX_N, stem_layout);
-            tp.mode = (uint8_t)mode;
+            tp_setup(stem_fx % SFX_N, stem_layout, sel);
+            tp.mode = (uint8_t)mode, tp.sel = (uint8_t)sel;
         }
         tp_live = 0;
         if (tp_on && n <= CTL)

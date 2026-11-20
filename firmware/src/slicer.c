@@ -49,7 +49,13 @@ static const uint8_t SL_DEN[6] = {2, 4, 8, 3, 6, 12};   /* P_SLRATE (N_SLDIV): a
 #if BOARD_SMK37
 /* SMK-37: the STUT recordings and the punch-in ring (punch.c) in one block, so STEM FX can share it out among the stems'
  * punch rings (smk_tpunch.h); laid out as SLOOP's otherwise (the recordings, then the ring) */
-static int16_t smk_fxpool[NTRK * SL_LEN + 32768u] __attribute__((section(".pool")));
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && !SMK_HARM_BUILD
+#define TP_EXTRA 12288u                 /* Mewcoder: the stems' rings longer (smk37-devtools punch-page2-spec.md §2: the
+                                         * pool's spare after the merge; Mewcoder + Harmoniser has none to give) */
+#else
+#define TP_EXTRA 0u
+#endif
+static int16_t smk_fxpool[NTRK * SL_LEN + 32768u + TP_EXTRA] __attribute__((section(".pool")));
 #define sl_buf ((int16_t (*)[SL_LEN])smk_fxpool)
 static uint8_t sl_mem_lent;      /* STEM FX on: the recordings' memory is the stems' rings, STUT records nothing */
 #else

@@ -16,7 +16,7 @@
  * its stem's alone). A span longer than a ring (a slow tempo) is cut to what it holds; STOP and REWIND fade where the
  * past runs out, as REWIND does on the master */
 #define TP_MRING 4096u                  /* the master's ring with STEM FX on (punch.c punch_cap): 93 ms */
-#define TP_POOL (NTRK * SL_LEN + PUNCH_N)
+#define TP_POOL (NTRK * SL_LEN + PUNCH_N + TP_EXTRA)
 #define TP_MAXR 7u
 enum { SFX_SLICER, SFX_PUNCH, SFX_HQ, SFX_N };
 static uint8_t stem_fx;                 /* the menu's STEM FX (project.c smkset); live */
@@ -31,6 +31,7 @@ static uint8_t tp_on;                   /* this start's layout and STEM FX: the 
 static uint8_t tp_live;                 /* this block: one of them plays or fades */
 static struct {
     uint8_t mode, n, s;                 /* the mode set up (0xFF: none yet); rings; 1 (HQ) or 2 (PUNCH) */
+    uint8_t sel;                        /* the stems chosen at that setup (tp_sel) */
     uint32_t cap;                       /* a ring's samples (storage rate) */
     uint32_t ws;                        /* the write counter, every ring (storage samples) */
     uint32_t t;                         /* output samples (the storage pairs' phase) */
@@ -64,7 +65,7 @@ static int32_t tp_fr2[CTL], tp_gb[CTL]; /* .. between them, Q15, and its gain, Q
  * punches catching a sound's edge); the ring keeps those samples while the effect plays (own_lo, own_n) */
 #define TP_SEAM 128u
 static uint32_t tp_seam(uint32_t len);
-_Static_assert(TP_POOL - TP_MRING <= 4u * 65536u, "a ring's slots fit tp_wi (16 bits) for every ring count");
+_Static_assert(TP_POOL - TP_MRING <= 65536u, "a ring's slots fit tp_wi (16 bits), one ring chosen too");
 
 /* the stem punch-in page (FX held, STEM FX = PUNCH / HQ in a stem layout): the effects that play on the stems, three
  * rows of four tiles and pads, coloured by kind: the loops orange, time and tape cyan, rhythm green, space violet. A
@@ -77,7 +78,15 @@ static const uint8_t TP_PAGE_K[TP_PAGE_N] = {TPK_LOOP, TPK_LOOP, TPK_LOOP, TPK_L
                                              TPK_TAPE, TPK_LOOP, TPK_RHYTHM, TPK_TAPE, TPK_SPACE};
 static const uint8_t TP_KIND_RGB[TPK_N][3] = {{255, 110, 0}, {0, 190, 255}, {40, 220, 60}, {190, 60, 255},
                                               {255, 220, 40}};
-static int tp_page_on(void) { return tp_on != 0u; }    /* (the UI: this page instead of the 27 keys) */
+static int tp_page_on(void) { return tp_on && stem_layout; }   /* (the UI: this page instead of the 27 keys; the
+                                                         * single out keeps its own page, the rings or not) */
+/* the stems the punch acts on (the punch's page 2, smk37-devtools punch-page2-spec.md §2): bit 0..2 T1..T3, bit 3 the
+ * drums (every drum stem); a stem off plays dry, keeps no ring and runs no tp_x, its memory the others'. All on: as
+ * before. The single out (STEREO) with some off: the rhythmic punch-ins on rings of the stems chosen, the tonal ones on
+ * the master (STUT off meanwhile, as with STEM FX) */
+static uint8_t tp_sel = 15u;             /* (project.c smkset pmask) */
+static uint8_t tp_roff;                  /* this setup: bit r, ring r has none */
+#define TP_RSEL(sel, r) (((sel) >> ((r) < 3u ? (r) : 3u)) & 1u)
 
 static int tp_fx(int32_t fx)            /* the rhythmic ones: on the stems with STEM FX */
 {
@@ -92,9 +101,10 @@ _Static_assert(HM_MEM <= NTRK * SL_LEN, "the harmoniser's memory fits the SLICER
 #else
 #define TP_HM 0u
 #endif
-static void tp_setup(uint32_t mode, uint32_t layout)
+static void tp_setup(uint32_t mode, uint32_t layout, uint32_t sel)
 {
-    uint32_t i, n = layout == 2u ? 4u : layout == 1u ? 7u : 6u;   /* (usb.c UL_*: 2 SYNTHS+RET, 1 DRUMS+RET, 3 ALL DRY) */
+    uint32_t i, ns = 0, j = 0, n = layout == 2u ? 4u : layout == 1u ? 7u : layout ? 6u : 4u;   /* (usb.c UL_*: 2
+                                                         * SYNTHS+RET, 1 DRUMS+RET, 3 ALL DRY; 0 STEREO: T1..T3, the kit) */
     memset(smk_fxpool + TP_HM, 0, sizeof smk_fxpool - TP_HM * sizeof smk_fxpool[0]);
     for (i = 0; i < NTRK; i++)                          /* the SLICERs: no STUT recording or repeat left */
         sl[i].loop = 0, sl[i].rec_on = 0, sl[i].rec = 0, sl[i].w = 0;
@@ -102,7 +112,10 @@ static void tp_setup(uint32_t mode, uint32_t layout)
     tp.cur = -1, tp.g = 0, tp.own_n = 0, tp.t = 0;
     tp.ws = TP_POOL;                                    /* (a whole ring ahead of 0: a span behind it never wraps
                                                          * the counter, so idx % cap stays continuous) */
-    if (mode == SFX_SLICER || !layout) {                /* (0: STEREO) */    /* as SLOOP: the master's whole ring, the SLICER's STUT */
+    sel &= 15u;
+    if (!layout && sel != 15u)                          /* (the single out, some stems chosen: rings for them) */
+        mode = mode == SFX_HQ ? SFX_HQ : SFX_PUNCH;
+    if (mode == SFX_SLICER || (!layout && sel == 15u)) {  /* (0: STEREO) */    /* as SLOOP: the master's whole ring, the SLICER's STUT */
         punch_ring = smk_fxpool + NTRK * SL_LEN, punch_cap = PUNCH_N;
         tp.n = 0, tp_on = 0, sl_mem_lent = TP_HM != 0u;   /* (HARMONY: STUT records nothing, its memory is the
                                                          * harmoniser's) */
@@ -111,9 +124,17 @@ static void tp_setup(uint32_t mode, uint32_t layout)
     punch_ring = smk_fxpool + TP_POOL - TP_MRING, punch_cap = TP_MRING;
     tp.n = (uint8_t)n;
     tp.s = mode == SFX_HQ ? 1u : 2u;
-    tp.cap = (TP_POOL - TP_MRING - TP_HM) / n;
     for (i = 0; i < n; i++)
-        tp_ring[i] = smk_fxpool + TP_HM + i * tp.cap, tp_half[i] = 0;
+        ns += TP_RSEL(sel, i);
+    tp.cap = (TP_POOL - TP_MRING - TP_HM) / (ns ? ns : 1u);
+    tp_roff = 0;
+    for (i = 0; i < TP_MAXR; i++) {
+        tp_half[i] = 0;
+        if (i < n && TP_RSEL(sel, i))
+            tp_ring[i] = smk_fxpool + TP_HM + j++ * tp.cap;
+        else
+            tp_ring[i] = 0, tp_roff |= (uint8_t)(1u << i);
+    }
     tp_on = 1, sl_mem_lent = 1;
 }
 
@@ -321,6 +342,8 @@ static inline int32_t tp_x(uint32_t r, uint32_t i, int32_t x)
 {
     int16_t *b = tp_ring[r];
     int32_t w;
+    if (!b)
+        return x;                                       /* (a stem not chosen: dry, no ring) */
     if (tp_wr[i]) {                                     /* the ring records (every ring, in step) */
         if (tp_wr[i] == 1u)
             b[tp_wi[i]] = (int16_t)clamp((tp.s == 1u ? x : (tp_half[r] + x) >> 1) >> 3, -32768, 32767);
@@ -351,6 +374,10 @@ static inline int32_t tp_xs(uint32_t r, uint32_t i, int32_t x, int32_t *dq)
 {
     int16_t *b = tp_ring[r];
     int32_t w;
+    if (!b) {
+        *dq = 32768;                                    /* (a stem not chosen: dry, no ring) */
+        return 0;
+    }
     if (tp_wr[i]) {
         if (tp_wr[i] == 1u)
             b[tp_wi[i]] = (int16_t)clamp((tp.s == 1u ? x : (tp_half[r] + x) >> 1) >> 3, -32768, 32767);
@@ -382,6 +409,8 @@ static inline int32_t tp_xs(uint32_t r, uint32_t i, int32_t x, int32_t *dq)
 static void tp_zero(uint32_t r, uint32_t n)             /* a silent stem's block: its ring records the silence */
 {
     uint32_t i;
+    if (!tp_ring[r])
+        return;
     for (i = 0; i < n; i++)
         (void)tp_x(r, i, 0);
 }
