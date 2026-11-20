@@ -57,10 +57,7 @@ def sub1(pat, rep, s, flags=0, expand=False):
 # the editor's one file for the disk show them offline too
 CATS = "data:image/gif;base64," + base64.b64encode((Path(__file__).parent / "pages" / "cats.gif").read_bytes()).decode()
 CATS_IMG = f'<img class="cats" src="{CATS}" width="454" height="477" alt="Two dancing cats: the boot screen">'
-html = sub1(r"<h1>.*?</h1>", f"{CATS_IMG}\n  <h1>{title}</h1>", html, re.S)
-html = sub1(r"</head>", "<style>.cats { float: right; width: 150px; height: auto; margin: 0 0 12px 18px; background: #000;"
-            " border-radius: 8px; } .tiles { clear: both; } @media (max-width: 520px) { .cats { width: 110px; } }</style>\n"
-            "</head>", html)
+html = sub1(r"<h1>.*?</h1>", f"<h1>{title}</h1>", html, re.S)
 html = sub1(r"<title>SLOOP installer</title>", "<title>" + {"stems": "Multichannel", "mewcoder": "Mewcoder",
             "harmoniser": "Mewcoder + Harmoniser"}[build] + " installer</title>", html)
 html = sub1(r'<p class="lead">.*?</p>', f'<p class="lead">{lead}</p>', html, re.S)
@@ -94,8 +91,22 @@ BRAND_CSS = (".smkb { display: flex; flex-direction: column; align-items: flex-s
              " .smkb b { font-size: 15px; font-weight: 600; letter-spacing: .06em; line-height: 1.25; }"
              " .smkb i { font-style: normal; color: #ff40ff; }"
              " .smkb small { font-size: 12px; color: #ff40ff; white-space: pre; }")
-html = sub1(r'<div class="logo">.*?</div>', f'<div class="logo smkb">{BRAND}</div>', html, re.S)
-html = sub1(r"</head>", f"<style>{BRAND_CSS} .smkb b {{ font-size: 18px; }}</style>\n</head>", html)
+# the installer's top, above the line: the cats on the left, the build's name and version right-aligned beside them
+# (the language switch under them); the line in the cats' colours (cyan, yellow, magenta, white), the install button
+# and its progress in cyan
+CYAN, YELLOW, MAGENTA = "#18d6ee", "#f6f610", "#ff40ff"
+html = sub1(r'<div class="top"><div class="logo">.*?</div>(<button class="lang" id="lang"></button>)</div>',
+            rf'<div class="top">{CATS_IMG}<div class="smkb hdr">{BRAND}\1</div></div>', html, re.S, expand=True)
+html = sub1(r"</head>", f"<style>{BRAND_CSS}"
+            " .top { align-items: flex-end; } .top .cats { width: 150px; height: auto; background: #000; border-radius: 8px; }"
+            " .smkb.hdr { align-items: flex-end; text-align: right; } .smkb.hdr b { font-size: 18px; }"
+            " .smkb.hdr .lang { margin-top: 6px; }"
+            " @media (max-width: 520px) { .top .cats { width: 110px; } .smkb.hdr b { font-size: 15px; } }"
+            f" .strip i:nth-child(1) {{ background: {CYAN}; }} .strip i:nth-child(2) {{ background: {YELLOW}; }}"
+            f" .strip i:nth-child(3) {{ background: {MAGENTA}; }} .strip i:nth-child(4) {{ background: var(--fg); }}"
+            f" button#go {{ background: {CYAN}; }} progress::-webkit-progress-value {{ background: {CYAN}; }}"
+            f" progress::-moz-progress-bar {{ background: {CYAN}; }}"
+            "</style>\n</head>", html)
 # the package's line once it is checked: the build, not "SLOOP <version>"
 html = sub1(r"say\(`SLOOP \$\{meta\.version\}`\);", f'say("{BNAME}  {VSHOW}".trim());', html)
 SHOTS = {
