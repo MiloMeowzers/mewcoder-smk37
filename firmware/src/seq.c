@@ -2968,6 +2968,7 @@ static void seq_reset_tracks(uint32_t pos)
     clk_pos = pos;
 #if BOARD_SMK37
     sq_reset();                                    /* (FLIP, LOOP BACK, RAMP: from the top, none) */
+    br_reset();                                    /* (BEAT REPEAT: none playing; the latches stay) */
 #endif
 #if FELUCCA_ARRANGER
     live_bar = 0xFFFFFFFFu;                        /* (bar 0 is a new bar: SONG REC can start on it) */
@@ -3880,6 +3881,10 @@ static void events_block(uint32_t n)
                 sq_midi(d1, st == 0x90u && d2, d2);
                 continue;
             }
+            if (d1 >= BR_NOTE0 && d1 < BR_NOTE0 + NTRK) {   /* SMK-37: BEAT REPEAT T1..T4, on while the note is held */
+                br_toggle(d1 - BR_NOTE0, st == 0x90u && d2);
+                continue;
+            }
 #endif
             midi_fx(d1, st == 0x90u && d2);
             continue;
@@ -3992,6 +3997,10 @@ static void events_block(uint32_t n)
 #ifdef SMK_HARM
     hm_src = HM_SQ;                                   /* (HARMONY: T1's notes from here on are the sequence's, the arps',
                                                        * ROLL's: a voice they hold may be taken, harmoniser-spec.md §13n) */
+#endif
+#if BOARD_SMK37
+    br_block(adv);                                    /* BEAT REPEAT (smk_brep.h): before the steps, so a note on the
+                                                       * INTERVAL's boundary is captured */
 #endif
     for (i = 0; i < NTRK; i++) {
         seq_tick(&trk[i], adv);
