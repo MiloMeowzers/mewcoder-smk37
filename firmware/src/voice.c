@@ -1180,9 +1180,9 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         voc_mw = (uint8_t)(voc_mwa && t == TSEL ? clamp(perf_modw, 0, 127) : 0);   /* (MOD WHEEL (VOCODER)) */
 #endif
         if (voc_hq)
-            voc_process_hq(out, n);                     /* (HQ: the SETUP's, 44.1 kHz) */
+            VOC_FAR(voc_process_hq)(out, n);            /* (HQ: the SETUP's, 44.1 kHz) */
         else
-            voc_process(out, n);
+            VOC_FAR(voc_process)(out, n);
         TIM_VOC(tv);
         nr = 1u;
     }

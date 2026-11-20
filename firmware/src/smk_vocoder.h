@@ -47,6 +47,22 @@
  * (a low, narrow band's recursion: truncation read 0.6 dB high at 145 Hz); the envelopes Q19. The track's scale: a
  * voice at full scale 2 x VOICE_FS (dsp.c); the voice (Q15) is put on it as one such voice. */
 #include "smk_vocoder_tab.h"
+/* the vocoder's loops in RAM (Mewcoder: the analysis, the synthesis, HQ's; the owner, 2026-11-21: planned after the
+ * merge, done now). RAM and the flash are beyond a call: the callers go through VOC_FAR (as fx.c TAIL_FAR); flatten:
+ * all they call inlined (build.py: .ram_hot calls only within itself). Mewcoder + Harmoniser: not (its RAM window is
+ * full, and the vocoder is off while HARMONY is on) */
+#if BOARD_SMK37 && SMK_VOC_LEAN && SMK_UAC_IN_PROBE && !SMK_HARM_BUILD
+#define VOC_HOT __attribute__((section(".ram_hot"), noinline, used, flatten))
+#define VOC_HQ_ATTR VOC_HOT
+#define VOC_INL inline __attribute__((always_inline))   /* (what they call: never left a call out of RAM) */
+static inline void *voc_far(void *p) { void *volatile q = p; return q; }
+#define VOC_FAR(fn) ((__typeof__(&fn))voc_far((void *)&fn))
+#else
+#define VOC_HOT
+#define VOC_HQ_ATTR __attribute__((noinline))
+#define VOC_INL
+#define VOC_FAR(fn) (fn)
+#endif
 
 #ifndef VOC_MAXN
 #define VOC_MAXN 32u                     /* the largest block (CTL); even */
@@ -398,7 +414,7 @@ static void voc_ana_reset(void)          /* the analysis afresh (fx.c: as it sta
 /* core 0, before core 1's job (fx.c mix_block): the analysis writes the other buffer this block */
 static void voc_ana_flip(void) { voc_aw ^= 1u; }
 /* core 0, while core 1 renders: this block's voice (voc_in, n even) through the analysis bank into voc_ab[voc_aw] */
-static void voc_analyse(uint32_t n)
+static void VOC_HOT voc_analyse(uint32_t n)
 {
     uint32_t i, k, j = 0, mu = vpg.mute & ((1u << VOC_NB) - 1u);
     uint32_t afast = vpg.addsel != VS_IND && !(mu >> VOC_HF0), act = vpg.actl & 1u;   /* (SUM, none of its bands
@@ -509,7 +525,7 @@ static void voc_analyse(uint32_t n)
  * bridge and COLOUR full (speech: the loop as it was before BRIDGE TONE), VT_SUM the bridge added, VT_ALL COLOUR and FILL
  * too: the bridge costs only where it is heard */
 enum { VT_PLAIN, VT_SUM, VT_ALL };
-static int64_t voc_bands(int32_t c, uint32_t k, uint32_t k1, const int32_t *env, const int32_t *bk, int32_t cf,
+static VOC_INL int64_t voc_bands(int32_t c, uint32_t k, uint32_t k1, const int32_t *env, const int32_t *bk, int32_t cf,
                          uint32_t mode, uint32_t fill)
 {
     int64_t sum = 0;
@@ -585,7 +601,7 @@ static inline void voc_follow(uint32_t oa)       /* (oa: the block's sum of |x|,
             voc.bfa = 32255;                             /* (at most -36 dB off) */
     }
 }
-static void voc_process(int32_t *b, uint32_t n)
+static void VOC_HOT voc_process(int32_t *b, uint32_t n)
 {
     uint32_t i, j;
     int32_t pout = voc.peak_out, dg = VOC_MIX_Q15[vpg.byp == VB_SPEECH ? voc_dry % VOC_MIX_N : 0u];
@@ -708,7 +724,7 @@ static void voc_process(int32_t *b, uint32_t n)
  * 44.1 kHz, no 2:1 down and up: the carrier straight in, every sample through the bank (VOC_B0H ..), its envelopes the
  * analysis's at 22.05 kHz, each held two samples (they move at ~50 Hz), the speech addition up 2:1 through the
  * half-band. The noise, the AGC's level, BRIDGE TONE's ramps a 44.1 kHz sample. The analysis is as it was */
-static int64_t voc_bands_hq(int32_t c, const int32_t *env, const int32_t *bk, int32_t cf, uint32_t mode, uint32_t fill)
+static VOC_INL int64_t voc_bands_hq(int32_t c, const int32_t *env, const int32_t *bk, int32_t cf, uint32_t mode, uint32_t fill)
 {
     int64_t sum = 0;
     voc_bq *s = &voc.b[0];
@@ -729,7 +745,7 @@ static int64_t voc_bands_hq(int32_t c, const int32_t *env, const int32_t *bk, in
     }
     return sum;
 }
-static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /* (out of the hot code: FULL's cache
+static void VOC_HQ_ATTR voc_process_hq(int32_t *b, uint32_t n)   /* (out of the hot code: FULL's cache
                                                          * as before, 2026-11-11: inlined, FULL shed 0.7 / s, not 0.25) */
 {
     uint32_t i, j;
