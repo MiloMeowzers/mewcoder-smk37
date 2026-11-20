@@ -334,6 +334,9 @@ static uint8_t voc_eatt, voc_erel;
  * 39 syllables: BRIDGE 0 dB, the gaps 11 dB above the words before, 8 below with it; the hole as a word starts 2.7 ->
  * 1.6 dB */
 static uint8_t voc_brmode;
+static uint8_t voc_fullhq;               /* HOME > QUALITY > FULL HQ (the owner, 2026-11-20): HQ in FULL as well, on this
+                                          * switch until it is A/B'd and measured on the unit, then the default; kept
+                                          * (project.c, vocset.brmode bit 1) */
 #define VOC_FOLLOW_K 11585                /* the gaps at most -3 dB x the words' mean |x| (Q15; ~ -8 dB as heard) */
 static inline int32_t voc_env_k(int32_t e, int32_t y, int32_t ka, int32_t kr)   /* voc_env with its times given */
 {
@@ -854,7 +857,8 @@ static void __attribute__((noinline)) voc_process_hq(int32_t *b, uint32_t n)   /
  * (voc_fade), then switches (the vocoder starts afresh) and fades the new one in */
 /* HQ: every SETUP but FULL, and only once the units it turns off have stopped (fx.c voc_setup_block: they come back only
  * once HQ is off): the two never run together (2026-11-11: FULL's units and HQ at once, the switch broke up) */
-#define VOC_HQ_WANT(req) ((req) == 1u + VM_SAW && VOC_SETUP_ON != VSU_FULL && !(voc_dbg & 1u) && !voc_skip_wait && \
+#define VOC_HQ_WANT(req) ((req) == 1u + VM_SAW && (VOC_SETUP_ON != VSU_FULL || voc_fullhq) && !(voc_dbg & 1u) && \
+                          !voc_skip_wait && \
                           !hm_on &&   /* (HARMONY: 22.05 kHz until HQ beside it is measured, harmoniser-spec.md §8) */ \
                           voc_skip == VSU_SKIP(VOC_SETUP_ON))
 static uint32_t voc_state(void)

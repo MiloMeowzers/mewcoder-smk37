@@ -1130,6 +1130,7 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         voc_mwa = (uint8_t)(s.rsv[0] % VOC_MWA_N);
         voc_eatt = (uint8_t)(s.eatt % VOC_EATT_N), voc_erel = (uint8_t)(s.erel % VOC_EREL_N);   /* (older: 0, 0) */
         voc_brmode = (uint8_t)(s.brmode & 1u);         /* (older: FIXED) */
+        voc_fullhq = (uint8_t)((s.brmode >> 1) & 1u);  /* QUALITY > FULL HQ (older: OFF) */
 #if SMK_HARM_BUILD
         hm_set(s.harm & 1u);                           /* (older: OFF; taken at the next block, fx.c hm_apply) */
         hm_int = (uint8_t)((s.harm >> 1) & 1u);         /* (older: FIXED) */
@@ -1198,7 +1199,7 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.trl = (uint8_t)(int8_t)((int32_t)(voc_trim[0] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
     vocset.trr = (uint8_t)(int8_t)((int32_t)(voc_trim[1] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
     vocset.mixv = 1;
-    vocset.brmode = (uint8_t)(voc_brmode & 1u);
+    vocset.brmode = (uint8_t)((voc_brmode & 1u) | (voc_fullhq & 1u) << 1);
 #if SMK_HARM_BUILD
     vocset.harm = (uint8_t)((hm_want & 1u) | (hm_int & 1u) << 1 | ((hm_thin ^ HM_THIN_DEF) & 15u) << 2);   /* (as
                                                      * asked: the block's start may not have taken it yet) */

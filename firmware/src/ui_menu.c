@@ -54,6 +54,8 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * carrier's; kept, project.c) */
        MI_VTILT, MI_VCOL, MI_VBLEND, MI_VNORM,     /* BRIDGE TONE > TILT, COLOUR, BLEND, NORMAL (the whole output's: the
                                                     * VSM201's weights; smk_vocoder.h; kept, project.c) */
+       MI_VFHQ,                                    /* QUALITY > FULL HQ (smk_vocoder.h voc_fullhq: HQ in FULL too, on a
+                                                    * switch until A/B'd; kept, project.c) */
        MI_VEATT, MI_VEREL, MI_VGDEL, MI_VBRM,      /* ENVELOPE > ATTACK, RELEASE (the bands' envelopes), GATE DELAY (the
                                                     * external carrier's gate), BRIDGE MODE (smk_vocoder.h voc_brmode);
                                                     * kept, project.c */
@@ -104,7 +106,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #endif
                                               "MODE", "LEVEL", "DRY", "HF", "CUTOFF", "RESO", "VOICE", "NOISE",
                                               "BRIDGE", "THRESHOLD", "AGC", "MOD WHEEL", "TILT", "COLOUR", "BLEND", "RESPONSE",
-                                              "ATTACK", "RELEASE", "GATE DELAY", "BRIDGE MODE",
+                                              "FULL HQ", "ATTACK", "RELEASE", "GATE DELAY", "BRIDGE MODE",
 #if SMK_HARM_BUILD
                                               "HARMONY", "INTERVALS", "SUNG NOTE",
                                               "LANE MONO", "VOICE", "T2", "T3", "DRUMS", "VOICE", "T2", "T3", "DRUMS",
@@ -121,25 +123,25 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
 #if SMK_UAC_IN_PROBE && !SMK_HARM_BUILD           /* Mewcoder: POLY CAP after ENVELOPE */
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV,
-       MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_QUAL,
+       MS_ENV, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
-                                              "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "POLY CAP", "SEQ", "PLAY",
-                                              "MIDI", "DAW", "SYSTEM"};
+                                              "CARRIER", "SILENCE", "BRIDGE TONE", "QUALITY", "ENVELOPE", "POLY CAP",
+                                              "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
-                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_PC1, MI_ADV,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VFHQ, MI_VEATT, MI_PC1, MI_ADV,
                                                MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
 #elif SMK_UAC_IN_PROBE
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_ENV,
-       MS_HARM, MS_LTHIN, MS_LRATE, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PUNCH, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_QUAL,
+       MS_ENV, MS_HARM, MS_LTHIN, MS_LRATE, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PUNCH", "SETUP", "INPUT", "VOCODER",
-                                              "CARRIER", "SILENCE", "BRIDGE TONE", "ENVELOPE", "HARMONY", "LANE THIN",
+                                              "CARRIER", "SILENCE", "BRIDGE TONE", "QUALITY", "ENVELOPE", "HARMONY", "LANE THIN",
                                               "LANE RATE", "POLY CAP", "SEQ", "PLAY", "MIDI",
                                               "DAW", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SFX, MI_VSETUP, MI_VTRL,
-                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_PC1, MI_ADV,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VFHQ, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_PC1, MI_ADV,
                                                MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
@@ -153,9 +155,9 @@ static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, M
 #endif
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SFX - MI_LAYOUT <= 4 && MI_VOC0 - MI_SFX <= 4 &&
 #if SMK_UAC_IN_PROBE && !SMK_HARM_BUILD
-               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_PC1 - MI_VEATT <= 4 && MI_ADV - MI_PC1 <= 4 &&
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VFHQ - MI_VTILT <= 4 && MI_VEATT - MI_VFHQ <= 4 && MI_PC1 - MI_VEATT <= 4 && MI_ADV - MI_PC1 <= 4 &&
 #elif SMK_UAC_IN_PROBE
-               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VEATT - MI_VTILT <= 4 && MI_HON - MI_VEATT <= 4 && MI_LT0 - MI_HON <= 4 && MI_LR0 - MI_LT0 <= 4 && MI_PC1 - MI_LR0 <= 4 && MI_ADV - MI_PC1 <= 4 &&
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VFHQ - MI_VTILT <= 4 && MI_VEATT - MI_VFHQ <= 4 && MI_HON - MI_VEATT <= 4 && MI_LT0 - MI_HON <= 4 && MI_LR0 - MI_LT0 <= 4 && MI_PC1 - MI_LR0 <= 4 && MI_ADV - MI_PC1 <= 4 &&
 #else
                MI_ADV - MI_VOC0 <= 4 &&
 #endif
@@ -448,6 +450,9 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         str_cpy(b + str_len(b), " DB", 4);
         return b;
     }
+    case MI_VFHQ:                                     /* HQ in FULL (dim: another SETUP, already HQ, or the vocoder off) */
+        *c = VOC_AUDIO_ON && voc_setup % VSU_N == VSU_FULL ? C_HI : C_DIM;
+        return voc_fullhq ? "HQ" : "OFF";
     case MI_VBRM:                                     /* FIXED, FOLLOW (dim: no bridging: the same) */
         *c = VOC_AUDIO_ON && voc_bridge ? C_HI : C_DIM;
         return voc_brmode ? "FOLLOW" : "FIXED";
@@ -1094,6 +1099,9 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         voc_trim[i == MI_VTRR] = (uint8_t)(v < 0 ? 0 : v > (int32_t)VOC_TRIM_N - 1 ? (int32_t)VOC_TRIM_N - 1 : v);
         break;
     }
+    case MI_VFHQ:                                      /* right HQ, left OFF; OCT+ toggles */
+        voc_fullhq = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_fullhq);
+        break;
     case MI_VBRM:                                      /* right FOLLOW, left FIXED; OCT+ toggles */
         voc_brmode = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !voc_brmode);
         break;

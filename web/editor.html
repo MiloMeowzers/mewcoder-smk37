@@ -7926,6 +7926,7 @@ const OB = {
     ["eatt", 472, "ATTACK", ["3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"], 0],
     ["erel", 473, "RELEASE", ["8 MS", "15 MS", "25 MS", "40 MS", "60 MS", "100 MS"], 0],
     ["brmode", 477, "BRIDGE MODE", ["FIXED", "FOLLOW"], 0],
+    ["fhq", 477, "FULL HQ (QUALITY)", ["OFF", "HQ"], 0],
     ["spair", 511, "STEREO PAIR (USB, SYNTHS+RET)", ["RET", "DRUMS", "T1", "T2", "T3"], 0],
     ["pc0", 512, "POLY CAP: T1", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6],   /* (AUTO: 4 on FM6, else none) */
     ["pc1", 513, "POLY CAP: T2", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6],
@@ -7955,6 +7956,7 @@ const OB = {
 };
 const OB_PG = 72;                                     /* vocset_t pcur: mute (4), emph[20], add[20], brg[10], fn[20], byp .. */
 const OB_BITS = { vsetup: [0, 3], vinl: [2, 7], vinr: [5, 7],     /* vocset rsv[1] (byte 71): SETUP, IN L, IN R */
+                  brmode: [0, 1], fhq: [1, 1],                     /* vocset brmode (byte 477): BRIDGE MODE, FULL HQ */
                   hon: [0, 1], hint: [1, 1],                       /* vocset harm (byte 478): HARMONY, INTERVALS */
                   lt0: [2, 1, 1], lt1: [3, 1, 1], lt2: [4, 1, 1], lt3: [5, 1],   /* .. LANE THIN (kept as the change from
                                                                       ON, ON, ON, OFF: the third value) */
