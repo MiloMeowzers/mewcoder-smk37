@@ -212,6 +212,7 @@ jobs:
           cp -r out/installer-mewcoder pages/mewcoder
           cp -r out/installer-harmoniser pages/harmoniser
           cp -r .github/pages/shots pages/shots     # (the page's own screens, each build's beside its section)
+          cp .github/pages/cats.gif pages/          # (the dancing cats at the top: the boot screen, smk37-devtools splash-spec.md)
           v="2.8.1-smk37-$(git rev-parse --short HEAD)"
           sed -e "s|STEMSBUILD|$v|" -e "s|MEWBUILD|$(cat out/mewcoder-version.txt)|" \
               -e "s|HARMBUILD|$(cat out/harmoniser-version.txt)|" .github/pages/index.html > pages/index.html

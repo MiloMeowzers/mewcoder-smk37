@@ -7,6 +7,7 @@ recovery becomes the SMK-37's own (its USB recovery screen). SLOOP's web/ is not
 
   .github/smk_site.py OUT_DIR stems|mewcoder|harmoniser MODEL_NAME
 """
+import base64
 import re
 import shutil
 import sys
@@ -48,7 +49,14 @@ def sub1(pat, rep, s, flags=0, expand=False):
     return s2
 
 
-html = sub1(r"<h1>.*?</h1>", f"<h1>{title}</h1>", html, re.S)
+# the dancing cats (every build's boot screen, smk37-devtools splash-spec.md): the owner's GIF, inlined, so the page and
+# the editor's one file for the disk show them offline too
+CATS = "data:image/gif;base64," + base64.b64encode((Path(__file__).parent / "pages" / "cats.gif").read_bytes()).decode()
+CATS_IMG = f'<img class="cats" src="{CATS}" width="454" height="477" alt="Two dancing cats: the boot screen">'
+html = sub1(r"<h1>.*?</h1>", f"{CATS_IMG}\n  <h1>{title}</h1>", html, re.S)
+html = sub1(r"</head>", "<style>.cats { float: right; width: 150px; height: auto; margin: 0 0 12px 18px; background: #000;"
+            " border-radius: 8px; } .tiles { clear: both; } @media (max-width: 520px) { .cats { width: 110px; } }</style>\n"
+            "</head>", html)
 html = sub1(r"<title>SLOOP installer</title>", "<title>SLOOP installer: " + {"stems": "Multichannel USB audio",
             "mewcoder": "Mewcoder", "harmoniser": "Mewcoder + Harmoniser"}[build] + "</title>", html)
 html = sub1(r'<p class="lead">.*?</p>', f'<p class="lead">{lead}</p>', html, re.S)
@@ -183,5 +191,11 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
     # the manual, beside the installer link under the connect button
     e = sub1(r'(<a class="dim" href="[^"]*"(?: target="_blank" rel="noopener")? data-t="installer"></a>)',
              rf'\1<a class="dim" href="{MANUAL[0]}" target="_blank" rel="noopener">Manual</a>', e, expand=True)
+    # the dancing cats at the foot of the device card, always, under its controls (hidden where the side bar becomes a
+    # top bar)
+    e = sub1(r"</div>\n  </aside>", f"  {CATS_IMG}\n    </div>\n  </aside>", e)
+    e = sub1(r"</head>", "<style>.devcard .cats { width: 100%; max-width: 200px; height: auto; align-self: center; margin-top: 8px;"
+             " background: #000; border-radius: 8px; } @media (max-width: 860px) { .devcard .cats { display: none; } }"
+             "</style>\n</head>", e)
     ed.write_text(e, encoding="utf-8")
     print(f"smk_site.py: {ed}: {n} x FM-1 -> SMK-37")
