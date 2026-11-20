@@ -7896,7 +7896,6 @@ const OB = {
     ["saver", 20, "SCREENSAVER", [[3, "OFF"], [2, "1 MIN"], [1, "2 MIN"], [0, "5 MIN"], [7, "10 MIN"], [6, "30 MIN"]], 0],
     ["rtrip", 22, "BEAT REPEAT TRIPLETS (PUNCH 2)", ["ON", "OFF"], 0],
     ["rvar", 23, "BEAT REPEAT VARIATION (PUNCH 2)", Array.from({ length: 11 }, (_, i) => [i, String(i)]), 0],
-    ["fdly", 22, "FREEZE DELAY (PUNCH 2)", ["OFF", "1/8", "1/8.", "1/4", "1/4.", "1/2"], 0],
     ["vel", 4, "KEY VELOCITY", ["DYNAMIC", "SOFT", "HARD", "FIXED 64", "FIXED 100", "FIXED 127"], 0],
     ["trs", 5, "TRS MIDI OUT", ["OFF", "ON"], 1],
     ["bup", 6, "BEND UP", OB_BEND, 7], ["bdn", 7, "BEND DOWN", OB_BEND, -1],
@@ -7965,7 +7964,7 @@ const OB = {
 const OB_PG = 72;                                     /* vocset_t pcur: mute (4), emph[20], add[20], brg[10], fn[20], byp .. */
 const OB_BITS = { vsetup: [0, 3], vinl: [2, 7], vinr: [5, 7],     /* vocset rsv[1] (byte 71): SETUP, IN L, IN R */
                   brmode: [0, 1], fhq: [1, 1],                     /* vocset brmode (byte 477): BRIDGE MODE, FULL HQ */
-                  rtrip: [0, 1], fdly: [1, 7],                     /* smkset pflags (byte 22): TRIPLETS OFF, FREEZE DELAY */
+                  rtrip: [0, 1],                                   /* smkset pflags (byte 22): TRIPLETS OFF */
                   hon: [0, 1], hint: [1, 1],                       /* vocset harm (byte 478): HARMONY, INTERVALS */
                   lt0: [2, 1, 1], lt1: [3, 1, 1], lt2: [4, 1, 1], lt3: [5, 1],   /* .. LANE THIN (kept as the change from
                                                                       ON, ON, ON, OFF: the third value) */
