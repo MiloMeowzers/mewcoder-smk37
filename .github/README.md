@@ -1,42 +1,39 @@
-# Mewcoder + Harmoniser
+# Mewcoder
 
-SLOOP 2.8.4 for the M-Vave SMK-37 Elite with **Mewcoder's vocoder** and now **its own harmoniser**: your voice, or any
-sound you choose, in over USB audio, played dry, through a **20-channel vocoder** modelled on the Sennheiser VSM201, or
-into **up to three harmony voices** modelled on the Eventide H949, with a lane of it across every track. One of the
-builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37). **Early testing / pre-release.**
+SLOOP 2.8.4 with a vocoder, for the M-Vave SMK-37 Elite: **your voice, or any sound you choose, in over USB audio** on track 3, played dry or
+through a **20-channel vocoder** modelled on the Sennheiser VSM201, played from the keys and the sequencer. One of the
+two builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37).
 
-**[Install](https://milomeowzers.github.io/sloop-smk37/harmoniser/webapp/installer/)** ·
-**[Editor](https://milomeowzers.github.io/sloop-smk37/harmoniser/webapp/editor/)** ·
-[Harmoniser manual](/HARMONISER.md) · [Vocoder manual](/VOCODER.md) ·
-[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder%2Bharmoniser-v0.2-pre)
+**[Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/)** ·
+**[Editor](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/editor/)** ·
+[Manual](/VOCODER.md) ·
+[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1)
 
-> Unofficial firmware, not affiliated with or endorsed by M-Vave or Eventide. No warranty. **Back up the keyboard
-> first** ([how](/SMK37.md#install)).
+> Unofficial firmware, not affiliated with M-Vave. No warranty. **Back up the keyboard first** ([how](/SMK37.md#install)).
 
-![The HARMONY page: G1 INTERVALS, G2 PANEL, G3 OUTPUTS](/assets/screens/smk37-harm-page.png)
+![The vocoder page: the 20 channels on the knobs and pads](/assets/screens/smk37-vocoder-page.png)
 
-## The harmoniser
+## Two inputs, routed
 
-**HOME > HARMONY: ON** makes track 1 the harmoniser. Send your voice to it (HOME > SETUP > IN L or IN R: HARMONY) and
-play intervals from T1's keys, the interval pads, MIDI or the sequencer.
-- **Up to three harmony voices** with the H949's sound: formants that move with the pitch, a crossfaded splice, the
-  memory at 22.05 kHz. FIXED intervals from C4, or SCALE: counted from the note you sing, in the song's key.
-- **A lane across every track:** T2, T3 and the drums each harmonised on their own channel, at their own pan.
-  **FADER BANK F** is each track's MIX (0 dry, 100 the harmony alone).
-- **FADER BANK E:** PITCH (two octaves down to one up), FEEDBACK (cascades that always die away, or the H949's
-  self-oscillation with FB LIMIT H949), VOICE IN, LANE RATE.
-- **The HARMONY page** (HOME on the tracks screen): the PITCH RATIO readout, the HK940's interval pads, MICRO, LEVEL and
-  pan per voice, SHARP / FLAT, MANUAL, the feedback EQ, REPEAT, IN / OUT.
-- **The load settings** in the HOME menu: LANE THIN, LANE RATE, LANE MONO and POLY CAP. The vocoder is off while
-  HARMONY is on.
+![HOME > SETUP: the defaults, your voice with your synth as the carrier, an instrument through T1](/assets/screens/smk37-voc-setup.png)
 
-![The load settings: LANE MONO, LANE THIN, LANE RATE, POLY CAP](/assets/screens/smk37-harm-load.png)
+The USB input's left and right sides are **two sources of their own**. Your voice on one; on the other:
+- **your synth as the carrier**, played from the SMK-37's keys over MIDI and gated by them: the classic studio vocoder;
+- **an instrument through T1's or T2's effects** (filter, drive, sends, punch-ins) and onto its own USB stem;
+- or nothing: a mono mic at full level.
 
-## The vocoder (Mewcoder)
+**SETUP** chooses which of SLOOP's tracks play beside the vocoder. Turn T1 and T2 or the drums off when your DAW brings
+its own, and the vocoder runs at **44.1 kHz (HQ)**. [How it all works](/VOCODER.md#2-setup-and-the-two-inputs).
 
-Everything from [Mewcoder v0.1](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1): track 3 plays
-the computer's audio dry or through the vocoder, two USB inputs each routed on the keyboard (TRACK 3, CARRIER, T1, T2,
-HARMONY, OFF), SETUP, the vocoder page and the editor's tab, now **Vocoder · Harmony**.
+## What you get
+
+- **An audio track:** track 3 plays the computer's audio (your microphone, an instrument, any recording) dry or vocoded.
+- **The vocoder:** 20 channels, per-channel emphasis, speech addition, silence bridging, voiced / unvoiced detection,
+  ATTACK and RELEASE for smoother syllables, BRIDGE MODE FOLLOW for a smooth pickup into each word.
+- **The carrier:** saws played from the keys and the sequencer (two a note in VOC ALONE), or your own synth. Play
+  chords: that is the classic sound.
+- **The vocoder page:** the 20 channels on the knobs and pads (PATCH on the tracks screen).
+- **The editor's Vocoder tab**, and everything else SLOOP and the Multichannel USB audio build have.
 
 **Left out to make room:** the built-in samples (your own samples work), the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and
 NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMeowzers/sloop-smk37).
@@ -44,14 +41,16 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 ## Start
 
 1. Back up the keyboard's flash ([how](/SMK37.md#install)) and your projects (the editor's Backup).
-2. [Install](https://milomeowzers.github.io/sloop-smk37/harmoniser/webapp/installer/) (Chrome or Edge, over USB).
+2. [Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
 3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
-4. HOME > INPUT > **AUDIO IN: ON**; HOME > HARMONY > **HARMONY: ON: T1**; HOME > SETUP > **IN R: HARMONY** (the side
-   your voice is on).
-5. Sing, and hold **G4** on T1: a fifth above you. Then raise a track's MIX on FADER BANK F.
+4. HOME > USB > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
+5. A mono mic on one side: HOME > SETUP > **IN R: OFF** (or IN L), for its full level. HOME > **INPUT** shows each
+   side's level: trim your voice until its peaks sit near the −10 tick.
 
-The [harmoniser manual](/HARMONISER.md) has the rest; how it was tested, and how to keep a heavy setup in time, in
-[A13](/HARMONISER.md#a13-built-and-tested-for-heavy-use).
+The [manual](/VOCODER.md) has the rest.
 
-Branch `harmoniser` · release [`mewcoder+harmoniser-v0.2-pre`](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder%2Bharmoniser-v0.2-pre) ·
-GPL-3.0-only
+**In development:** a harmoniser modelled on the Eventide H949, for this build, on the same routing: your voice,
+another external sound, the drums or a synth engine pitch-shifted into up to three harmony voices.
+
+Branch `mewcoder` · release [`mewcoder-v0.1`](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1) ·
+how it was built: [VOCODER-DESIGN.md](/VOCODER-DESIGN.md) · GPL-3.0-only
