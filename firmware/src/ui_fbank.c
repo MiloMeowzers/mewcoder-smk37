@@ -207,6 +207,46 @@ static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, 
     str_cpy(v2 + str_len(v2), unit, 20 - str_len(v2));
     return d;
 }
+#if SMK_UAC_IN_PROBE && SMK_HARM_BUILD
+/* FADER BANK G's meters (harmoniser-spec.md §14): under each fader, its lane's input level as it plays, on the source's
+ * scale, 2 dB a step from -42 to +6 dB: green, amber from -6 dB, red from +4 (the lane's limiter acts at +5); a red tick
+ * at the end while that lane's limiter acts. Drawn alone, a row when its step changes, falling a step a frame */
+static const int32_t FBM_TH[24] = {65379, 51932, 41251, 32767, 26028, 20675, 16422, 13045, 10362, 8231, 6538, 5193,
+                                   4125, 3277, 2603, 2067, 1642, 1304, 1036, 823, 654, 519, 413, 328};   /* +6 .. -40 dB */
+static uint8_t fbm_st[4] = {0xFFu, 0xFFu, 0xFFu, 0xFFu}, fbm_hold[4];   /* (the limiter's tick held ~0.3 s) */
+static void fb_meters(uint32_t full)
+{
+    uint32_t i, lim = hm.llim;
+    hm.llim = 0;
+    for (i = 0; i < 4u; i++) {
+        int32_t pk = hm.lmi[i], s = 0, k, w, y = 120 + 4 + (int32_t)i * 24 + 21;
+        uint32_t st;
+        hm.lmi[i] = 0;
+        while (s < 24 && pk < FBM_TH[s])
+            s++;
+        st = (uint32_t)(24 - s);                       /* (0 none .. 24 at +6 dB) */
+        if (fbm_st[i] != 0xFFu && !full && st < fbm_st[i])
+            st = fbm_st[i] - 1u;                       /* (falling a step a frame) */
+        if ((lim >> i) & 1u)
+            fbm_hold[i] = 20u;
+        else if (fbm_hold[i])
+            fbm_hold[i]--;
+        st |= (fbm_hold[i] ? 1u : 0u) << 7;
+        if (!full && st == fbm_st[i])
+            continue;
+        fbm_st[i] = (uint8_t)st;
+        cv_begin(204, 3, TE_G1);
+        w = (int32_t)(st & 31u) * 204 / 24;
+        for (k = 0; k < w; k += 4) {                   /* (in 4-px cells, each its zone's colour) */
+            int32_t lev = k * 24 / 204;                /* (the step it stands for) */
+            cv_rect(k, 0, w - k < 3 ? w - k : 3, 3, lev >= 23 ? TE_RED : lev >= 18 ? C_AMB : RGB(40, 200, 90));
+        }
+        if (st & 128u)
+            cv_rect(198, 0, 6, 3, TE_RED);             /* (the limiter acting) */
+        cv_blit(32, (uint32_t)y);
+    }
+}
+#endif
 static void fb_draw(void)
 {
     static uint32_t shown;
@@ -228,8 +268,13 @@ static void fb_draw(void)
 #if SMK_UAC_IN_PROBE
     sig = sig * 31u + hm_on + (uint32_t)(voc_mode % VM_N) * 2u + (uint32_t)VOC_AUDIO_ON * 4u;
 #endif
-    if (!ui.force && sig == shown)
+    if (!ui.force && sig == shown) {
+#if SMK_UAC_IN_PROBE && SMK_HARM_BUILD
+        if (b == 6u)
+            fb_meters(0);                              /* (bank G: the lanes' meters, as they play) */
+#endif
         return;
+    }
     shown = sig;
     for (half = 0; half < 2u; half++) {
         cv_begin(240, 120, C_BLACK);
@@ -285,4 +330,8 @@ static void fb_draw(void)
         }
         cv_blit(0, half * 120u);
     }
+#if SMK_UAC_IN_PROBE && SMK_HARM_BUILD
+    if (b == 6u)
+        fb_meters(1);                                  /* (over the rows just drawn) */
+#endif
 }
