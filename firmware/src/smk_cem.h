@@ -67,6 +67,20 @@ static inline __attribute__((always_inline)) int32_t cem_th(int32_t x)
     return x < 0 ? -y : y;
 }
 
+/* (r x 2^n) / d in 32-bit steps (the pi32v2 link has no 64-bit divide, signed or not): r < 2 d, d < 2^31, the result
+ * under 2^32; n + 1 compare-subtracts, once a block at most */
+static uint32_t cem_udiv(uint32_t r, uint32_t d, uint32_t n)
+{
+    uint32_t q = 0;
+    if (r >= d)
+        r -= d, q = 1;
+    while (n--) {
+        r <<= 1, q <<= 1;
+        if (r >= d)
+            r -= d, q |= 1u;
+    }
+    return q;
+}
 /* WARMTH's values, worked out when it changes: the bias b, tanh(b), and 1 / (1 - tanh(b)^2)^4 (Q28) for the loop's k */
 static uint8_t cem_wseen = 0xFFu;
 static int32_t cem_tb, cem_thb, cem_kw;
@@ -76,7 +90,7 @@ static void cem_warm_calc(void)                  /* (both cores may run it at on
     int32_t sl, s2, s4, tb = (int32_t)(w > 100u ? 100u : w) * (CEM_ONE / 200), thb = cem_th(tb);   /* (0.5 at 100) */
     sl = (1 << 30) - (int32_t)(((int64_t)thb * thb) >> 18);
     s2 = CEM_M30(sl, sl), s4 = CEM_M30(s2, s2);
-    cem_kw = (int32_t)(((uint64_t)1 << 58) / (uint32_t)s4);                /* (up to 2.6 at WARMTH 100) */
+    cem_kw = (int32_t)cem_udiv(1u << 29, (uint32_t)s4, 29);    /* 2^58 / s4 (up to 2.6 at WARMTH 100; s4 > 0.38) */
     cem_tb = tb, cem_thb = thb;
     cem_wseen = w;
 }
@@ -103,12 +117,13 @@ static void cem_coef(cem_t *c, int32_t cut, int32_t res, uint32_t lad, int32_t h
     k = res * (int32_t)(4.3 * 16777216.0 / 127);                 /* Q24 */
     kl = lad ? k : (int32_t)(((int64_t)k * cem_kw) >> 28);
     den = CEM_ONE + (((int64_t)kl * G4) >> 31);                  /* 1 + k G^4, Q24 */
-    inv = (int64_t)(((uint64_t)1 << 54) / (uint64_t)den);                              /* Q30 */
+    inv = (int64_t)cem_udiv(1u << 24, (uint32_t)den, 30);      /* 2^54 / den, Q30 (den 1 .. ~6.3) */
     c->kinv = (int32_t)(((int64_t)kl * inv) >> 27);              /* Q27 (up to 11.3) */
     h = lad ? hot : ((int64_t)hot * (CEM_ONE + (k * 7) / 10)) >> 24;   /* hot (1 + 0.7 k), Q24 */
     h = (h * pre) >> 24;
     c->inm = (int32_t)((h * inv) >> 28);                         /* .. / (1 + k G^4), Q26 */
-    o = (int64_t)(((uint64_t)1 << 50) / ((((uint64_t)hot * 4u) / 5u * (uint64_t)pre) >> 24));   /* 1 / (0.8 hot pre), Q26 */
+    o = (int64_t)cem_udiv(1u << 22, (uint32_t)(((uint64_t)((uint32_t)hot * 4u / 5u) * (uint32_t)pre) >> 24), 28);   /* 1 / (0.8 hot
+                                                                  * pre), Q26: 2^50 / it (0.8 hot pre >= 0.2) */
     c->hpm = (int32_t)o;
     if (lad)
         o = (o * (CEM_ONE + k / 2)) >> 24;                       /* LADDER: x (1 + 0.5 k) */
