@@ -100,7 +100,7 @@ update mode (UBOOT).
 | KNOB 3 | dial 3 on screen (yellow) | K7 | dial 3 |
 | KNOB 4 | dial 4 on screen (orange) | K8 | dial 4 |
 | — | — | KNOB LAYOUT = SMK | HOME menu > SCREEN > KNOB LAYOUT (K7): K1–K4 the dials 1–4, K5 master volume, K6 SELECT, K7 PRESETS, K8 ALGORITHM (track); FM-1 (default) as above |
-| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass; open across ±6 steps of the centre), C reverb, D delay (the harmoniser build with HARMONY on: also E HARM: PITCH, FEEDBACK, VOICE IN, LANE RATE; F LANE: each track's dry / harmony MIX). **PICKUP:** after a bank change a fader acts only once it reaches the value the bank holds (within 3 steps, or passing through it either way), so nothing jumps; until then the FADER BANK screen shows it waiting, with an arrow the way to go |
+| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass; open across ±6 steps of the centre), C reverb, D delay (the harmoniser build with HARMONY on: also E HARM: PITCH, FEEDBACK, VOICE IN, LANE RATE; F LANE: each track's dry / harmony MIX; G IN: each lane's input level with a meter, [HARMONISER.md A4](HARMONISER.md#a4-the-faders-banks-e-and-f-and-pickup)). **Bank A's law** (since Mewcoder v0.2 and Mewcoder + Harmoniser v0.2-pre): in dB, the bottom off, then −40 dB rising evenly to 0 dB at the fader's 100, and up to +2 dB over the rest of its travel; the drums' fader the same in dB (a project's values, MIDI and the encoders are not changed by it). Moving any fader brings up the FADER BANK screen (tap FADER BANK to close it; < > or SELECT step the banks while it is up). **PICKUP:** after a bank change a fader acts only once it reaches the value the bank holds (within 3 steps, or passing through it either way), so nothing jumps; until then the FADER BANK screen shows it waiting, with an arrow the way to go |
 | — (no wheels used by SLOOP) | — | PITCH wheel | pitch bend, selected synth track: HOME menu > PLAY > BEND UP (K6) / BEND DOWN (K7), OFF, 1, 2, 3, 4, 5, 7, 12 semitones each; default 7 / 7 |
 | — | — | MOD wheel | vibrato 10 Hz, up to ±1 semitone (up = more) |
 | — | — | PEDAL jack | — |
@@ -321,6 +321,15 @@ lower (PITCH). The knobs, as printed on the panel (the screen shows the same gri
 | K6 | DECAY: each repeat quieter | 0 .. 100 % | 0 % |
 | K7 | PITCH: each repeat lower (not on the drums) | 0 .. −48 semitones | 0 |
 | K8 | WET/DRY: the repeats against the track's own notes | 0 (only the track) .. 50 (both full) .. 100 (only the repeats while they play) | 50 |
+
+**How the repeats fall on the grid** (one bar of 1/16s, a track playing A .. H; DECAY, PITCH and WET / DRY change
+how each repeat sounds, not where it falls):
+
+![BEAT REPEAT on the grid: the defaults; OFFSET 6/16 with GRID 1/8; GATE equal to the INTERVAL; an OFFSET on an empty step](assets/screens/smk37-beat-repeat-grid.png)
+
+- At each boundary (the INTERVAL, moved by OFFSET) it **listens for one GRID**, then plays what it heard again **every
+  GRID**, the notes at their places inside it, until **GATE** (counted from the boundary) has passed.
+- GATE / GRID − 1 repeats: GATE 4/16 at GRID 1/16 gives 3, GATE 8/16 at GRID 1/8 gives 3, GATE 8/16 at 1/16 gives 7.
 
 - The settings are kept with the keyboard, per track (and read by the editor); PUNCH 2 in the HOME menu has
   TRIPLETS and VARIATION (below; both for every track).
