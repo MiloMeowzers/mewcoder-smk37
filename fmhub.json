@@ -1,9 +1,12 @@
 {
-  "what": "SLOOP's four-track groovebox on the SMK-37, in two builds. Mewcoder turns track 3 into a 20-channel vocoder after the Sennheiser VSM201, with two routed USB audio inputs for your voice, a carrier or an instrument. Multichannel sends six USB audio stems to your DAW, with a punch-in on every one.",
+  "what": "SLOOP's four-track groovebox on the SMK-37, in three builds. Mewcoder turns track 3 into a 20-channel vocoder after the Sennheiser VSM201, with two routed USB audio inputs. Mewcoder + Harmoniser adds three harmony voices after the Eventide H949. Multichannel sends six USB audio stems to your DAW.",
   "author": "MiloMeowzers",
-  "kinds": ["groove"],
+  "kinds": [
+    "groove"
+  ],
   "editor": "https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/editor/",
   "image": "assets/screens/smk37-card.png",
+  "sounds": "licensed: Versilian Studios VSCO-2 CE and VCSL and Sonic Pi samples, CC0 1.0; Greg Sullivan's Wurlitzer EP200 samples in the hip-hop pack, CC BY 3.0",
   "color": "#2EE6A8",
   "smk37": {
     "install": "https://milomeowzers.github.io/mewcoder-smk37/",
