@@ -75,8 +75,10 @@ if build in ("mewcoder", "harmoniser"):   # no built-in samples in these builds
 # 240 x 240 screens (drawn from its menu and page code), in .github/pages/shots/, copied next to the page
 REPO = "https://github.com/MiloMeowzers/sloop-smk37"
 MANUAL = {"stems": (f"{REPO}/blob/ci/SMK37.md", "The SMK-37 manual"),      # (Mewcoder and Mewcoder + Harmoniser share
-          "mewcoder": (f"{REPO}/blob/harmoniser/VOCODER.md", "The vocoder manual"),   # the manuals on the harmoniser
+          "mewcoder": (f"{REPO}/blob/mewcoder/VOCODER.md", "The vocoder manual"),   # the manuals on the harmoniser
           "harmoniser": (f"{REPO}/blob/harmoniser/HARMONISER.md", "The harmoniser manual")}[build]   # branch)
+# the vocoder builds: the SMK-37 manual too (Selectable Punch In Effects, BEAT REPEAT, VARIATION, the fader banks)
+MANUAL2 = None if build == "stems" else (f"{REPO}/blob/{build}/SMK37.md", "The SMK-37 manual")
 SITE = "https://milomeowzers.github.io/sloop-smk37/" + {"stems": "", "mewcoder": "mewcoder/webapp/installer/",
                                                         "harmoniser": "harmoniser/webapp/installer/"}[build]
 BNAME = {"stems": "Multichannel", "mewcoder": "Mewcoder", "harmoniser": "Mewcoder + Harmoniser"}[build]
@@ -133,7 +135,9 @@ shots_dir.mkdir(exist_ok=True)
 for name, _, _ in SHOTS:
     shutil.copyfile(Path(__file__).parent / "pages" / "shots" / f"{name}.png", shots_dir / f"{name}.png")
 html = sub1(r'(\s*<p><button id="app" class="ed" hidden data-t="appInstall"></button></p>)',
-            f'\n  <p><a class="ed" href="{MANUAL[0]}" target="_blank" rel="noopener">{MANUAL[1]}</a></p>'
+            f'\n  <p><a class="ed" href="{MANUAL[0]}" target="_blank" rel="noopener">{MANUAL[1]}</a></p>' +
+            (f'\n  <p><a class="ed" href="{MANUAL2[0]}" target="_blank" rel="noopener">{MANUAL2[1]}</a></p>'
+             if MANUAL2 else "") +
             r'\1' + '\n  <h2 class="shots-h">On the keyboard</h2>\n  <div class="shots">\n' + "".join(
                 f'    <figure><img src="shots/{n}.png" width="240" height="240" alt="" loading="lazy">'
                 f'<figcaption><b>{c}</b>{s}</figcaption></figure>\n' for n, c, s in SHOTS) + "  </div>", html, expand=True)
@@ -239,7 +243,9 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
     e = e.replace('href="https://isod89.github.io/sloop-fm1/webapp/installer/"', f'href="{SITE}"')
     # the manual, beside the installer link under the connect button
     e = sub1(r'(<a class="dim" href="[^"]*"(?: target="_blank" rel="noopener")? data-t="installer"></a>)',
-             rf'\1<a class="dim" href="{MANUAL[0]}" target="_blank" rel="noopener">Manual</a>', e, expand=True)
+             rf'\1<a class="dim" href="{MANUAL[0]}" target="_blank" rel="noopener">Manual</a>' +
+             (rf'<a class="dim" href="{MANUAL2[0]}" target="_blank" rel="noopener">SMK-37 manual</a>'
+              if MANUAL2 else ""), e, expand=True)
     # the side bar's top: the build's name and its version, in place of SLOOP's logo and "editor"
     e = sub1(r'<a class="brand" href="#sound" aria-label="SLOOP">.*?</a>',
              f'<a class="brand smkb" href="#sound" aria-label="{htmlmod.escape(BNAME)}">{BRAND}</a>', e, re.S)
@@ -265,6 +271,9 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
              " @media (max-width: 860px) { .devcard .cats { display: none; } }"
              # the connect button in the cats' cyan, as the installer's install button (white under the pointer)
              f" button#connect.pri:not(:disabled) {{ background: {CYAN}; }}"
-             " button#connect.pri:hover:not(:disabled) { background: var(--fg); }</style>\n</head>", e)
+             " button#connect.pri:hover:not(:disabled) { background: var(--fg); }"
+             # (the vocoder builds' second manual link: the side bar's links row wraps instead of running over)
+             " .devcard .links { flex-wrap: wrap; justify-content: flex-start; column-gap: 12px; row-gap: 4px; }"
+             "</style>\n</head>", e)
     ed.write_text(e, encoding="utf-8")
     print(f"smk_site.py: {ed}: {n} x FM-1 -> SMK-37")
