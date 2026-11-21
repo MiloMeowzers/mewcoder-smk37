@@ -382,6 +382,8 @@ GRID set on K3, so the repeats stutter in and out of time. It moves along the GR
 | **7 or 8** | up to four places either side | 1/4 .. 1/64 (all nine) |
 | **9 or 10** | up to five places either side | all nine, the ends more often |
 
+![VARIATION compared: the odds of each GRID for every setting at GRID 1/16; one run each of VARIATION 0, 2, 6 and 10 over a bar](assets/screens/smk37-beat-repeat-variation.png)
+
 - **Odd and even values pair up** (1 = 2, 3 = 4, ...): six settings in all.
 - **Each place in the range is equally likely.** A range that runs past an end of the list counts the end once for
   every place past it, so the slowest and fastest come up more often (at GRID 1/4 with VARIATION 2: 1/4 two times in
@@ -390,7 +392,8 @@ GRID set on K3, so the repeats stutter in and out of time. It moves along the GR
   plays 1/16 ...). At GRID 1/16 with VARIATION 2: 1/8 one time in three, 1/16 two in three.
 - **When it picks:** once for the capture (so the length listened to varies too) and again for each repeat after.
   A repeat shorter than the capture plays only the captured notes that fit in it; a longer one plays them all and
-  leaves a gap after. GATE still ends the repeats at the same time.
+  leaves a gap after. GATE ends the repeats at about the same time: no new repeat starts after it, but one that has
+  started plays its whole GRID out (with a long pick, past GATE's end).
 - Ableton's VARIATION modes (TRIGGER, 1/4, 1/8, 1/16, AUTO) are not built: this is one mode, a new pick every repeat.
 
 ### Sequencer effects (row 4)
