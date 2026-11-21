@@ -57,6 +57,10 @@ SDK_SHA256 = {
 PRODUCT = "FM-1_900"                # package identity; release builds are FM-1_9XY
 BOARD = "fm1"                       # fm1 (default) or smk37: BOARD env or --board
 BOARD_PREFIX = {"fm1": "FM-1_9", "smk37": "SMK-37 Pro_9"}   # identity of a release build: prefix + X + Y
+# the vocoder builds' own identities (The Firmware Hub, thefirmwarehub.com/fmhub.md rule 3: a number no other firmware
+# uses; SMK-37 Elite_900 is Felucca's): Mewcoder, Mewcoder + Harmoniser (SMK_HARM_BUILD=1). Their update loader keeps
+# ota-<model>_900 (the installers know it as ours); the package and the running firmware report these
+VOC_IDENT = {"0": "9370001", "1": "9370002"}
 BOARD_DEFS = {"fm1": [], "smk37": ["-DBOARD_SMK37=1"]}       # the FM-1 build gets no new flag (byte-identical)
 # smk37: the keyboard's model name (MODEL env or --model); one hardware, three names. pro adds no flag
 MODELS = {"pro": "SMK-37 Pro", "elite": "SMK-37 Elite", "mke": "MKE-P37"}
@@ -201,7 +205,7 @@ def build_loader():
 HOT_TEXT = ["fm1_alnk0_irq", "mix_tail_wait", "cpu1_wait", "tp_pos", "uac6_room", "lfo_sync_inc", "events_block",
             "trk_note_on", "trk_note_off", "voice_victim", "lock_step", "drum_synth_on", "drum_pick", "roll_hit",
             "hm_block", "mix_units", "mix_part_run", "hm_insert", "hm_lane", "gain_next", "esync_coef", "lfo_wave", "tflt_run", "ins_run", "click_render",
-            "voc_fade", "tp_zero", "eng_arena_of", "pow2_q16", "analog_render", "analog_render_f",
+            "voc_fade", "tp_zero", "eng_arena_of", "pow2_q16", "analog_render", "analog_render_f", "analog_render_c", "tflt_cem",
             "fm6_render", "fm6_part_of", "fm6_note_of", "fm6_op_run", "fm6_op_fb", "fm6_env_advance",
             "fm6_penv_advance", "fm6_block", "fm6_sync", "fm6_note_on", "fm6_done", "phase_render", "pd_setup",
             "sample_render", "sample_next", "slice_render", "drawbar_render", "grain_render", "phys_render",
@@ -455,6 +459,11 @@ def main():
         BOARD_PREFIX[BOARD] = BOARD_PREFIX[BOARD].replace(MODELS["pro"], MODELS[model])
         stem += "-" + model
     name = f"{stem}.fwsc"
+    ident = VOC_IDENT.get(os.environ.get("SMK_HARM_BUILD") or "0") if (
+        BOARD == "smk37" and os.environ.get("SMK_UAC_IN_PROBE") == "1" and os.environ.get("SMK_VOC_LEAN") == "1"
+        and os.environ.get("SMK_UAC_PROBE") != "1") else None
+    if ident:                       # the vocoder builds: an identity of their own (The Firmware Hub's rule 3)
+        PRODUCT = PRODUCT.rsplit("_", 1)[0] + "_" + ident
     if a.release:                   # one digit each: the identity has room for two
         m = re.fullmatch(r"(\d)\.(\d)(-[A-Za-z0-9]+)?", a.release)
         if not m:

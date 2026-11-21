@@ -581,7 +581,7 @@ UI_SMALL static void layer_knobs(uint32_t layer)
                 song.g[G_DUST] = (int16_t)clamp(song.g[G_DUST] + accel(EN_K2, s, 127), 0, 127);
             else if (k == 2u)
                 song.g[G_DUCK] = (int16_t)clamp(song.g[G_DUCK] + accel(EN_K3, s, 127), 0, 127);
-#if SMK_UAC_IN_PROBE
+#if SMK_UAC_IN_PROBE && !SMK_CEM                       /* (the filter build: T3's FILTER, the vocoder's output) */
             else if (VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW)   /* track 3 vocoding: CARRIER CUTOFF */
                 voc_cut = (uint8_t)clamp((int32_t)voc_cut + accel(EN_K4, s, 127), 0, 127);
 #endif

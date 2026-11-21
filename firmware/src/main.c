@@ -281,9 +281,15 @@ static void smk_faders(void)
                 }
             }
         }
-        switch (smk_fbank % FB_N) {
+        switch (FB_KIND(smk_fbank)) {
+#if SMK_CEM
+        case FB_RING:                                 /* RING (the last bank): 0 off (cem-filter-spec.md §5d) */
+            if (i < 3u)
+                smk_ring[i] = (int16_t)(v > 127u ? 127u : v);
+            break;
+#endif
         case 1:
-#if SMK_UAC_IN_PROBE
+#if SMK_UAC_IN_PROBE && !SMK_CEM
             if (VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW) {
                 voc_cut = (uint8_t)(v > 127u ? 127u : v);   /* track 3 vocoding: its fader is CARRIER CUTOFF (the
                                                      * track's FILTER is off, fx.c) */

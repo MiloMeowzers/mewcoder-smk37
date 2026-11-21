@@ -11,6 +11,9 @@ static void analog_note_on(track_t *t, voice_t *v)
         v->ph[0] = 0;                                 /* a fresh note: from phase 0 (an 808 starts the same every time) */
     v->ph[1] = v->ph[0] + 0x40000000u;
     v->s[0] = v->s[1] = 0;                            /* filter */
+#if SMK_CEM
+    v->s[3] = v->s[4] = 0;                            /* (CEM / LADDER: its stages 3 and 4; s[5], s[6] DRIFT's walks) */
+#endif
     if (!v->s[2])
         v->s[2] = 0x1234567 + (int32_t)v->age;        /* noise state */
 }
@@ -32,7 +35,10 @@ static inline int32_t analog_tap(const tsvf_t *c, int32_t k, int32_t in, int32_t
 #define ANALOG_K(res) (8192 - (res) * 7600 / 127)     /* tsvf_coef's damping, Q12 */
 
 /* the voice through the filter TYPE ft: analog_render's loop with ft 0 (a constant: LP, the code as it always was),
- * analog_render_f's with BP / HP (its own copy: the LP loop gains nothing) */
+ * analog_render_f's with BP / HP (its own copy: the LP loop gains nothing). SMK-37, the vocoder builds (smk_cem.h): ft 3,
+ * analog_render_c's, CEM or LADDER: DRV drives the filter (x 1 .. x 4) in place of the soft clip before it, DRIFT moves
+ * each voice's pitch and cutoff, its four stages in s[0], s[1], s[3], s[4]; and on every TYPE, the track's RING (fader
+ * bank RING): osc 1 x osc 2, crossfaded in before the filter (0: off, the sound as it was) */
 static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_t *v, int32_t *out, uint32_t n,
                                                               const vmod_t *m, uint32_t ft)
 {
@@ -57,40 +63,70 @@ static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_
     tsvf_coef(&flt, cut, p[P_E5]);
     if (det == 0)
         inc2 = inc1;
+#if SMK_CEM
+    int32_t ring = smk_ring[(uint32_t)(t - trk) & 3u] * 258, cs[4] = {0, 0, 0, 0};   /* (RING: Q15) */
+    cem_t cc;
+    if (ft == 3u) {
+        int32_t dc = 0;
+        if (cem_drift) {                              /* DRIFT: the walks a block, as much as DRIFT says (50: as is) */
+            int32_t dp;
+            cem_drift_step(&v->s[5], &v->s[6], &nst);
+            dp = v->s[5] * (int32_t)cem_drift / 50;
+            inc1 = cem_detune(inc1, dp), inc2 = cem_detune(inc2, -(dp * 7) / 10);   /* (osc 2 the other way, less) */
+            dc = (v->s[6] * (int32_t)cem_drift / 50) >> 8;
+        }
+        cem_coef(&cc, cut + dc, p[P_E5], p[P_FTYPE] == 4, CEM_ONE + drv * ((3 << 24) / 127), 10066330);   /* (in x 0.6) */
+        cs[0] = ic1, cs[1] = ic2, cs[2] = v->s[3], cs[3] = v->s[4];
+    }
+#define ANALOG_B (m2 || ring)
+#else
+#define ANALOG_B m2
+#endif
     for (i = 0; i < n; i++) {
         int32_t a, b = 0, s;
         switch (wave) {
         case 1:
             a = osc_pulse(ph0, inc1, 0x80000000u);
-            if (m2)
+            if (ANALOG_B)
                 b = osc_pulse(ph1, inc2, 0x80000000u);
             break;
         case 2:
             a = osc_tri(ph0);
-            if (m2)
+            if (ANALOG_B)
                 b = osc_tri(ph1);
             break;
         case 3:
             a = osc_sine(ph0);
-            if (m2)
+            if (ANALOG_B)
                 b = osc_sine(ph1);
             break;
         case 4:
             a = osc_pulse(ph0, inc1, pw);
-            if (m2)
+            if (ANALOG_B)
                 b = osc_pulse(ph1, inc2, pw);
             break;
         default:
             a = osc_saw(ph0, inc1);
-            if (m2)
+            if (ANALOG_B)
                 b = osc_saw(ph1, inc2);
             break;
         }
         ph0 += inc1;
         ph1 += inc2;
         s = m2 ? mulq15(a, m1) + mulq15(b, m2) : a;  /* (MIX 0, the 808s and subs: one oscillator) */
+#if SMK_CEM
+        if (ring)                                     /* RING: osc 1 x osc 2 */
+            s += mulq15(mulq15(a, b) - s, ring);
+#endif
         if (nz)
             s += mulq15((int32_t)(noise32(&nst) >> 17) - 16384, nz);
+#if SMK_CEM
+        if (ft == 3u) {                               /* CEM / LADDER: DRV is in the filter; soft past full scale */
+            s = soft_knee(cem_tick(cs, &cc, s << 9, 0) >> 8, 32000);   /* (x 2: as loud as LP at the same CUT) */
+            out[i] += mulq15(mulq15(s, amp_at(m, i)), VOICE_FS) << 1;
+            continue;
+        }
+#endif
         if (drv)                                      /* pre-shifts: drive is up to 4x, no overflow */
             s += mulq15(softclip(((s >> 2) * (drive >> 2)) >> 11) - s, dw);
         {   /* filter: linear up to half scale, then a soft knee (only resonance peaks saturate) */
@@ -105,17 +141,34 @@ static inline __attribute__((always_inline)) void analog_body(track_t *t, voice_
     }
     v->ph[0] = ph0;
     v->ph[1] = ph1;
+#if SMK_CEM
+    if (ft == 3u)
+        ic1 = cs[0], ic2 = cs[1], v->s[3] = cs[2], v->s[4] = cs[3];
+#endif
     v->s[0] = ic1;
     v->s[1] = ic2;
     v->s[2] = nst;
 }
+#undef ANALOG_B
 static __attribute__((noinline)) void analog_render_f(track_t *t, voice_t *v, int32_t *out, uint32_t n,
                                                       const vmod_t *m)
 {
     analog_body(t, v, out, n, m, t->p[P_FTYPE] == 1 ? 1u : 2u);
 }
+#if SMK_CEM
+static __attribute__((noinline)) void analog_render_c(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
+{
+    analog_body(t, v, out, n, m, 3u);                   /* CEM / LADDER (smk_cem.h) */
+}
+#endif
 static void analog_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
+#if SMK_CEM
+    if (t->p[P_FTYPE] >= 3) {
+        analog_render_c(t, v, out, n, m);
+        return;
+    }
+#endif
     if (t->p[P_FTYPE])                                  /* BP / HP (2.6) */
         analog_render_f(t, v, out, n, m);
     else

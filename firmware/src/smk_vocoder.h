@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
+#ifndef SMK_CEM
+#define SMK_CEM 0                        /* (engines.c: smk_cem.h in the vocoder builds; the tests without it) */
+#endif
 /* SMK-37 audio track and vocoder (SMK_UAC_IN_PROBE builds: the vocoder candidate, smk37-devtools README "Candidate"
  * and vocoder-harmoniser-reference.md). The owner's design (2026-10-30): while HOME > USB > AUDIO IN is on, track 3 is
  * the AUDIO TRACK (SLOOP keeps four: two engine tracks, the audio track, the drums). Its sound, made in voice.c
@@ -126,14 +129,19 @@ static uint16_t uin_pk[2];
 #define VSU_UDR 8u                       /* (the drums' bit: fx.c U_DRUMS, asserted there) */
 #define VSU_SKIP(s) ((s) == VSU_DRUMS ? 3u : (s) == VSU_SYNTH ? VSU_UDR : (s) == VSU_ALONE ? 3u | VSU_UDR : 0u)
 #define VOC_ROUTE(r) (VOC_AUDIO_ON ? (r) % VR_N : (uint32_t)VR_T3)
-/* track k (0, 1) plays an input: the SETUP has it off and IN L or IN R goes to it (T1 not while HARMONY is on: it is
- * the harmoniser, smk_harm.h) */
+/* track k (0, 1) plays an input: IN L or IN R goes to it, in every SETUP (the filter build, cem-filter-spec.md §6, the
+ * owner's original requirement: routing an input to a track overrides its synth; SETUP decides only which of the other
+ * tracks run). T1 not while HARMONY is on: it is the harmoniser, smk_harm.h */
+#if SMK_CEM
+#define VOC_TRK_IN(k) (!((k) == 0u && hm_on) && (VOC_ROUTE(voc_inl) == VR_T1 + (k) || VOC_ROUTE(voc_inr) == VR_T1 + (k)))
+#else
 #define VOC_TRK_IN(k) ((VSU_SKIP(VOC_SETUP_ON) >> (k) & 1u) && !((k) == 0u && hm_on) && \
                        (VOC_ROUTE(voc_inl) == VR_T1 + (k) || VOC_ROUTE(voc_inr) == VR_T1 + (k)))
+#endif
 #define VOC_EXT_CARR (VOC_ROUTE(voc_inl) == VR_CARR || VOC_ROUTE(voc_inr) == VR_CARR)
 /* the units the SETUP turns off (fx.c voc_setup_block): want at once (no new notes there: voice.c trk_note_on; their
  * notes released), skip once their release has had VOC_SKIP_WAIT blocks (~0.4 s); bit k track k, bit NPART the drums */
-static uint8_t voc_skip, voc_skip_want;
+static uint8_t voc_skip, voc_skip_want, voc_skip_su;   /* (voc_skip_su: the SETUP's own part of voc_skip_want) */
 static uint16_t voc_skip_wait;
 #define VOC_SKIP_WAIT 550u
 static int32_t voc_tin_g[2];             /* T1 / T2 playing an input: its fade (~5 ms), Q15 */
@@ -350,9 +358,9 @@ static uint8_t voc_eatt, voc_erel;
  * 39 syllables: BRIDGE 0 dB, the gaps 11 dB above the words before, 8 below with it; the hole as a word starts 2.7 ->
  * 1.6 dB */
 static uint8_t voc_brmode;
-static uint8_t voc_fullhq;               /* HOME > QUALITY > FULL HQ (the owner, 2026-11-20): HQ in FULL as well, on this
-                                          * switch until it is A/B'd and measured on the unit, then the default; kept
-                                          * (project.c, vocset.brmode bit 1) */
+static uint8_t voc_fullhq = SMK_CEM;     /* HOME > QUALITY > FULL HQ (the owner, 2026-11-20): HQ in FULL as well; ON by
+                                          * default since the filter build (A/B'd on the unit, cem-filter-spec.md §7);
+                                          * kept (project.c, vocset.brmode bit 1; a save from before it: ON) */
 #define VOC_FOLLOW_K 11585                /* the gaps at most -3 dB x the words' mean |x| (Q15; ~ -8 dB as heard) */
 static inline int32_t voc_env_k(int32_t e, int32_t y, int32_t ka, int32_t kr)   /* voc_env with its times given */
 {

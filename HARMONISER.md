@@ -115,8 +115,9 @@ quantise and CHORD settings do not apply (they are kept, and work again when HAR
 
 ### A4. The faders: banks E and F, and PICKUP
 
-While HARMONY is on, **FADER BANK** steps through seven banks, A to G. The harmoniser's live controls are on **E**,
-its balance on **F**, each lane's input level on **G**:
+While HARMONY is on, **FADER BANK** steps through eight banks, A to H. The harmoniser's live controls are on **E**,
+its balance on **F**, each lane's input level on **G**; **H** is RING (with HARMONY off it is bank E:
+[SMK37.md](SMK37.md#the-cem-and-ladder-filters-and-ring)):
 
 | Bank E, HARM | Sets |
 |---|---|
@@ -221,13 +222,13 @@ apply stay visible in amber, with the reason beside them:
 |---|---|
 | **TRACK 3** | T3 plays it: dry through T3's chain (effects, SLICER, punch-ins) on SYN 3, harmonised on **T3's lane** (bank F). Help: `T3 AUDIO: ITS LANE` |
 | **HARMONY** | into the **VOICE lane** (T1), out on SYN 1. Both channels on HARMONY: mixed, each at half |
-| **T2** | T2 plays it as an audio track, harmonised on **T2's lane**. Only in **NO SYNTH** or **INPUTS ONLY** (amber, NEEDS A SETUP, in FULL and NO DRUMS) |
+| **T2** | T2 plays it as an audio track (its synth set aside, the track named **EXT AUDIO L / R**), harmonised on **T2's lane**. In every SETUP since the filter build (before: only in NO SYNTH or INPUTS ONLY) |
 | **OFF** | not used |
 | **CARRIER** | amber, `VOCODER OFF: HARMONY ON` (the vocoder's external carrier) |
 | **T1** | amber, `T1 IS HARMONY ON` (T1 is the harmoniser) |
 
-**HOME > SETUP's names with HARMONY on** (the same four settings): **FULL**, **NO SYNTH** (T2's synth off: T2 free for
-an input), **NO DRUMS**, **INPUTS ONLY** (T2's synth and the drums off).
+**HOME > SETUP's names with HARMONY on** (the same four settings): **FULL**, **NO SYNTH** (T2's synth off; an input
+routed to T2 sets its synth aside in any SETUP), **NO DRUMS**, **INPUTS ONLY** (T2's synth and the drums off).
 
 **The drums on the drum channels.** The drum lane harmonises the whole kit; where its three voices come out depends on
 the USB layout:

@@ -2,7 +2,7 @@
  * SMK-37 Pro: Copyright (C) 2026 M. Geisler (genkigenki/makkuro) */
 /* The FADER BANK screen: the four banks, the active one lit, what faders 1..4 set (track colours).
  * FADER BANK opens it and then steps the bank, as < > and SELECT (K2, or K6) do; PATCH closes it, or it closes by itself. */
-static const char *const FB_NAME[7] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HARM", "LANE", "IN"};   /* (SEND: SENDS was wider than
+static const char *const FB_NAME[8] = {"LEVEL", "FILTER", "REVERB", "DELAY", "HARM", "LANE", "IN", "RING"};   /* (SEND: SENDS was wider than
                                                     * a sixth of the screen) */
 static const param_desc_t FB_NONE = {"--", F_PCT, 0, 0, 0, 0, 0};   /* (a fader with nothing to set: min == max) */
 /* (FB_N, the banks, and the pin and PICKUP state: ui_input.c; a test that includes this file alone: four banks, and
@@ -12,6 +12,9 @@ static uint8_t fb_pin, smk_fpos[4], smk_flive;
 #endif
 #ifndef FB_N
 #define FB_N 4u
+#endif
+#ifndef FB_KIND
+#define FB_KIND(b) ((b) % FB_N)
 #endif
 static uint8_t fb_open;
 static uint8_t fb_page, fb_home;                   /* the page it came up over (another page closes it) */
@@ -80,10 +83,42 @@ static void fb_lrate_set(uint32_t v)                   /* the fader moved (main.
     fb_lr_seen = hm_lrate;
 }
 #endif
+#if SMK_CEM
+/* RING (the last bank, cem-filter-spec.md §5d): a track whose sound takes it, ANALOG (osc 1 x osc 2) or one playing an
+ * input (x a sine at its last note); the drums, the vocoder, the harmoniser and the other engines: none (its value kept) */
+static int fb_ring_ok(uint32_t i)
+{
+    const track_t *t = &trk[i % NTRK];
+    if (i >= 3u)
+        return 0;
+#ifdef SMK_HARM
+    if (HM_T(t))
+        return 0;
+#endif
+    if (i < VOC_TRK && VOC_TRK_IN(i))
+        return 1;
+    if (VOC_TRK_AUDIO(t))
+        return voc_mode % VM_N != VM_SAW;
+    return ENGINES[t->engine % NENGINES] == &ENG_ANALOG;
+}
+#endif
 /* what fader i sets in bank b (main.c smk_faders) */
 static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
 {
     static const uint8_t TID[4] = {P_LEVEL, P_TFLT, P_REV, P_DLY}, GID[4] = {G_DRLVL, 0, G_DRREV, G_DRDLY};
+    b = FB_KIND(b);
+#if SMK_CEM
+    if (b == FB_RING) {
+        static const param_desc_t RING = {"RING", F_PCT, 0, 127, 0, 0, 0};
+        static int16_t rz;
+        if (!fb_ring_ok(i)) {
+            *vp = &rz;
+            return &FB_NONE;
+        }
+        *vp = &smk_ring[i & 3u];
+        return &RING;
+    }
+#endif
 #if SMK_UAC_IN_PROBE && SMK_HARM_BUILD
     static int16_t zero, hv[4];
     if (b == 4u) {                                 /* E, HARM: PITCH (semitones, fb_draw), FEEDBACK, VOICE IN, LANE RATE */
@@ -133,7 +168,8 @@ static const param_desc_t *fb_param(uint32_t b, uint32_t i, int16_t **vp)
         return &FB_NONE;
     }
 #endif
-#if SMK_UAC_IN_PROBE
+#if SMK_UAC_IN_PROBE && !SMK_CEM                       /* (the filter build: T3's FILTER on the vocoder's output, CARRIER
+                                                        * CUTOFF in the menu only) */
     if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW) {   /* track 3 vocoding: CARRIER CUTOFF */
         static int16_t cut;
         static const param_desc_t CUT = {"CUTOFF", F_PCT, 0, 127, 127, 0, 0};
@@ -172,12 +208,15 @@ static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, 
     char val[12];
     const char *unit = "";
     const param_desc_t *d = fb_param(b, i, vp);
+    b = FB_KIND(b);
     str_cpy(lab, i == TRK_DRUM ? "DRUMS" : "TRACK 1", 10);
     if (i != TRK_DRUM)
         lab[6] = (char)('1' + i);
 #if SMK_UAC_IN_PROBE
+#if !SMK_CEM
     if (b == 1u && VOC_TRK_AUDIO(&trk[i]) && voc_mode % VM_N == VM_SAW)
         str_cpy(lab, "T3 CUTOFF", 10);
+#endif
     if (b == 4u) {
         static const char *const HL[4] = {"PITCH", "FEEDBACK", "VOICE IN", "LANE RATE"};
         str_cpy(lab, HL[i & 3u], 10);
@@ -187,7 +226,11 @@ static const param_desc_t *fb_text(uint32_t b, uint32_t i, char *lab, char *v2, 
                                                          * input, 0 off) */
         str_cpy(lab, SL[i & 3u], 10);
     }
-    if (d == &FB_NONE && b != 5u && b != 4u)
+    if (d == &FB_NONE && b != 5u && b != 4u
+#if SMK_CEM
+        && b != FB_RING                                /* (RING: the track's name; "--" where its sound takes none) */
+#endif
+        )
         str_cpy(lab, "T1: HARM", 10);
 #endif
     param_format(d, **vp, val, &unit);
@@ -268,6 +311,10 @@ static void fb_draw(void)
 #if SMK_UAC_IN_PROBE
     sig = sig * 31u + hm_on + (uint32_t)(voc_mode % VM_N) * 2u + (uint32_t)VOC_AUDIO_ON * 4u;
 #endif
+#if SMK_CEM
+    sig = sig * 31u + (uint32_t)fb_ring_ok(0) + (uint32_t)fb_ring_ok(1) * 2u + (uint32_t)fb_ring_ok(2) * 4u;   /* (RING: which
+                                                    * tracks take it, as engines and routes change) */
+#endif
     if (!ui.force && sig == shown) {
 #if SMK_UAC_IN_PROBE && SMK_HARM_BUILD
         if (b == 6u)
@@ -281,14 +328,14 @@ static void fb_draw(void)
         if (!half) {
             cv_text(4, 2, &FONT_L, "FADER BANK", C_WHITE);
             for (i = 0; i < nb; i++) {             /* the banks (six with HARMONY: 40 px each) */
-                int32_t bw = (int32_t)(240u / nb), x = (int32_t)i * bw + 2, on = i == b, nw = text_w(&FONT_S, FB_NAME[i]);
+                int32_t bw = (int32_t)(240u / nb), x = (int32_t)i * bw + 2, on = i == b, nw = text_w(&FONT_S, FB_NAME[FB_KIND(i)]);
                 char l[2] = {(char)('A' + i), 0};
                 cv_rect(x, 42, bw - 4, 74, on ? C_WHITE : TE_G2);
                 if (!on)
                     cv_rect(x + 1, 43, bw - 6, 72, TE_G1);
                 cv_text(x + (bw - 4) / 2 - text_w(&FONT_L, l) / 2, 48, &FONT_L, l, on ? C_BLACK : TE_G3);
                 if (nw <= bw - 6 || on)                /* (a long name in a narrow box: the open bank's only) */
-                    cv_text(x + (bw - 4) / 2 - nw / 2, 90, &FONT_S, FB_NAME[i], on ? C_BLACK : TE_G3);
+                    cv_text(x + (bw - 4) / 2 - nw / 2, 90, &FONT_S, FB_NAME[FB_KIND(i)], on ? C_BLACK : TE_G3);
             }
         } else {
             for (i = 0; i < 4u; i++) {             /* the faders: F1 TRACK 1 ... value, a bar */
