@@ -115,7 +115,8 @@ quantise and CHORD settings do not apply (they are kept, and work again when HAR
 
 ### A4. The faders: banks E and F, and PICKUP
 
-While HARMONY is on, **FADER BANK** steps through six banks, A to F. The harmoniser's live controls are all on **E**:
+While HARMONY is on, **FADER BANK** steps through seven banks, A to G. The harmoniser's live controls are on **E**,
+its balance on **F**, each lane's input level on **G**:
 
 | Bank E, HARM | Sets |
 |---|---|
@@ -130,6 +131,19 @@ crossfade (dry = 1 - MIX, harmony = MIX), so a track keeps its level as you dial
 the HARMONY page's K8 **MIX** is the same value). The labels read `T1: HARM`, `T2 LANE`, `T3 LANE`, `DRUM LANE`
 ([A6](#a6-the-lanes-the-harmoniser-across-each-track-and-the-outputs)). On banks B and D, T1's column shows `T1: HARM`:
 the harmoniser has no filter and no delay send of its own.
+
+**Bank G** (**IN** on the screen): each lane's **input level**, before the harmoniser, with a **meter** under each
+fader. F1 is VOICE IN (the same value as bank E's F3); F2-F4 are **LANE IN** for T2, T3 and the drums, on the LEVEL
+fader's scale: 0.5 dB a step, **0 dB** at the default (as before this bank), up to +7.5 dB. Use it to balance the
+lanes against each other: a quiet pad up, a hot FM6 or kick down, so no lane leans on its limiter.
+
+- **The meters** show each lane's input as it plays, from -40 to +6 dB in 2 dB steps: **green**, **amber** from
+  -6 dB, **red** from +4 dB. The lane's limiter acts at +5 dB; a **red tick** at the right end lights while it acts
+  (held a moment so you see it). Aim for the loudest moments in the amber; occasional amber on a kick is fine.
+- **The lanes have 6 dB of headroom inside** (since this bank): a hot source no longer pins the limiter, so loud notes
+  stay clean instead of stepping and clicking. The meters, and the HARMONY page's input lights, read on the source's
+  scale, so 0 dB means the same as before: settings made by ear carry over.
+- Kept with each project (with the other harmoniser settings).
 
 **Bank B's centre** (FILTER off) has a dead zone of ±6 steps, so the filter is easy to leave open.
 
@@ -187,9 +201,11 @@ channel, at its own pan, with its own effects:
 - **G3's DRY LEVEL** (K1, and the DRY pad) trims **every track's dry** on top of its MIX: dry = (1 - MIX) x DRY LEVEL.
   **Set it to 100 for the plain balance.** A project saved at DRY LEVEL 30 (T1's old setting) now trims every track's
   dry to 30 %.
-- **The lanes are driven at unity**, not by the fader, so a track's harmony at 100 is as strong as its dry at 0.
-  **INPUT LEVEL** (G2 K1) is every lane's shared drive trim, and each lane has an **input limiter**: a block that would
-  go over -1 dBFS is turned down at once (no clipping), and comes back up over about 90 ms. Under it, nothing changes.
+- **The lanes are driven at unity** (times their LANE IN, FADER BANK G), not by the fader, so a track's harmony at
+  100 is as strong as its dry at 0. **INPUT LEVEL** (G2 K1) is every lane's shared drive trim, and each lane has an
+  **input limiter** at +5 dB on the source's scale (6 dB of headroom inside the lane): a block that would go over is
+  turned down smoothly within it (no clipping, no step), and comes back up over about 90 ms. Under it, nothing changes.
+  Bank G's meters show how close each lane comes ([A4](#a4-the-faders-banks-e-and-f-and-pickup)).
 - **A key on a send-lane track is harmonised at full level** whatever the track's LEVEL (the lane takes the track
   before its fader); bank A turns the whole track down afterwards.
 - **T1's lane stops** when T1's MIX is 0 and INTERVALS is FIXED (none of it heard, nothing needs its tracker), and starts

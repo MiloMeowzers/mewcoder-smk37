@@ -15,6 +15,21 @@ builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37). *
 
 ![The HARMONY page: G1 INTERVALS, G2 PANEL, G3 OUTPUTS](/assets/screens/smk37-harm-page.png)
 
+## New in this release
+
+- **FADER BANK G: LANE IN** with a **meter** under each fader: each lane's input level (T2, T3, the drums; VOICE IN on
+  F1), so the lanes balance by eye. The lanes now have **6 dB of headroom** inside and a smooth limiter: hot sources
+  (an FM6 pad, a kick) stay clean. [How](/HARMONISER.md#a4-the-faders-banks-e-and-f-and-pickup).
+- **Punch page 2** (< or > on the punch page): choose which stems the punch-ins act on, and **BEAT REPEAT** per track,
+  a sequencer effect modelled on Ableton's Beat Repeat: latched, with MUTE and WET / DRY.
+  [How it works](/SMK37.md#page-2-the-stems-punched-and-beat-repeat).
+- **POLY CAP AUTO** (the default): FM6 capped at 4 voices while HARMONY or the vocoder runs.
+- **STEMS > STEM LEVEL**: the stems at −18 (as before), −12 or −6 dB, for hotter 16-bit stems.
+- The vocoder's **smoother envelopes** and **QUALITY > FULL HQ**; **the cats** at power-on, on ABOUT and as a
+  screensaver.
+
+![Punch page 2: T1 repeating and T3 muted; the knobs on T2; HOME > PUNCH 2](/assets/screens/smk37-punch-page2.png)
+
 ## The harmoniser
 
 **HOME > HARMONY: ON** makes track 1 the harmoniser. Send your voice to it (HOME > SETUP > IN L or IN R: HARMONY) and
@@ -23,6 +38,7 @@ play intervals from T1's keys, the interval pads, MIDI or the sequencer.
   memory at 22.05 kHz. FIXED intervals from C4, or SCALE: counted from the note you sing, in the song's key.
 - **A lane across every track:** T2, T3 and the drums each harmonised on their own channel, at their own pan.
   **FADER BANK F** is each track's MIX (0 dry, 100 the harmony alone).
+- **FADER BANK G:** each lane's input level, with meters.
 - **FADER BANK E:** PITCH (two octaves down to one up), FEEDBACK (cascades that always die away, or the H949's
   self-oscillation with FB LIMIT H949), VOICE IN, LANE RATE.
 - **The HARMONY page** (HOME on the tracks screen): the PITCH RATIO readout, the HK940's interval pads, MICRO, LEVEL and
