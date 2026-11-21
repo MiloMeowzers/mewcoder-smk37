@@ -190,6 +190,7 @@ typedef struct {
  * the knee have room and the limiter only meets true peaks */
 #define HM_LIN_0 112u                    /* 0 dB */
 #define HM_HEAD 1                        /* the headroom: 6 dB (a shift) */
+#define HM_MSC(x) ((x) << HM_HEAD > 32767 ? 32767 : (x) << HM_HEAD)   /* a meter's value on the source's scale */
 static int16_t hm_lin[4] = {HM_LIN_0, HM_LIN_0, HM_LIN_0, HM_LIN_0};   /* T2, T3, DRUMS (VOICE's: VOICE IN); kept, vocset */
 /* skip silent work (harmoniser-spec.md §13f): a lane whose input, voices and feedback have stayed under HM_QTHR (int16
  * scale: ~-80 dB) for longer than its memory (HM_LEN: 320 ms) does nothing until its input wakes it; REPEAT holds it
@@ -230,6 +231,9 @@ static struct {
     uint16_t padl;                   /* the pads as last played */
     volatile int32_t up[6];          /* the page's peaks (it reads and clears them): the input, V1 .. V3, the output, the
                                       * feedback into the memory before its soft limit */
+    volatile int32_t lmi[4];         /* (§14) each lane's input on the source's scale (the headroom undone), for FADER
+                                      * BANK G's meters: the bank's screen reads and clears them */
+    volatile uint8_t llim;           /* .. bit k: lane k's limiter acted since the screen last looked */
     volatile int32_t lpi[4], lpo[4], lpf[4];   /* (§12) each lane's input (after INPUT LEVEL), wet output and memory
                                       * write before its soft limit (feedback in) peaks, int16 scale, since the console
                                       * read them ("harm": the T2 / drums levels; 32767 = clipped) */
@@ -1052,15 +1056,23 @@ static uint32_t HM_RAMHOT hm_lane(uint32_t k, const int32_t *in, int32_t *wl, in
             L->quiet = 0;
     }
     hm.pk_in = pk, hm.pk_out = po;
-    if (ui_in > hm.up[HM_UP_IN])                        /* (the page's, the loudest lane's: it takes them at its rate) */
-        hm.up[HM_UP_IN] = ui_in;
-    for (v = 0; v < 3u; v++)
-        if (ui_v[v] > hm.up[HM_UP_V + v])
-            hm.up[HM_UP_V + v] = ui_v[v];
-    if (ui_out > hm.up[HM_UP_OUT])
-        hm.up[HM_UP_OUT] = ui_out;
-    if (ui_fb > hm.up[HM_UP_FB])
-        hm.up[HM_UP_FB] = ui_fb;
+    {   /* (the page's, the loudest lane's: it takes them at its rate; §14: on the source's scale, the lanes' 6 dB of
+         * headroom undone, so a light means what it meant before: display only) */
+        int32_t mi = HM_MSC(ui_in), mo = HM_MSC(ui_out), mf = HM_MSC(ui_fb);
+        if (mi > hm.up[HM_UP_IN])
+            hm.up[HM_UP_IN] = mi;
+        for (v = 0; v < 3u; v++)
+            if (HM_MSC(ui_v[v]) > hm.up[HM_UP_V + v])
+                hm.up[HM_UP_V + v] = HM_MSC(ui_v[v]);
+        if (mo > hm.up[HM_UP_OUT])
+            hm.up[HM_UP_OUT] = mo;
+        if (mf > hm.up[HM_UP_FB])
+            hm.up[HM_UP_FB] = mf;
+        if ((ui_in << HM_HEAD) > hm.lmi[k % HL_N])      /* (bank G's meter: unclamped, up to +6 dB) */
+            hm.lmi[k % HL_N] = ui_in << HM_HEAD;
+        if (L->lg && L->lg < 32768)
+            hm.llim |= (uint8_t)(1u << (k % HL_N));
+    }
     if (ui_in > hm.lpi[k % HL_N])                       /* (each lane's, the console's) */
         hm.lpi[k % HL_N] = ui_in;
     if (ui_out > hm.lpo[k % HL_N])
