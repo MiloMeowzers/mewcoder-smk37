@@ -73,13 +73,13 @@ if build in ("mewcoder", "harmoniser"):   # no built-in samples in these builds
 
 # the manual (a link beside the editor's) and the screens, under the editor links. The screens are the firmware's own
 # 240 x 240 screens (drawn from its menu and page code), in .github/pages/shots/, copied next to the page
-REPO = "https://github.com/MiloMeowzers/sloop-smk37"
+REPO = "https://github.com/MiloMeowzers/mewcoder-smk37"
 MANUAL = {"stems": (f"{REPO}/blob/ci/SMK37.md", "The SMK-37 manual"),      # (Mewcoder and Mewcoder + Harmoniser share
           "mewcoder": (f"{REPO}/blob/mewcoder/VOCODER.md", "The vocoder manual"),   # the manuals on the harmoniser
           "harmoniser": (f"{REPO}/blob/harmoniser/HARMONISER.md", "The harmoniser manual")}[build]   # branch)
 # the vocoder builds: the SMK-37 manual too (Selectable Punch In Effects, BEAT REPEAT, VARIATION, the fader banks)
 MANUAL2 = None if build == "stems" else (f"{REPO}/blob/{build}/SMK37.md", "The SMK-37 manual")
-SITE = "https://milomeowzers.github.io/sloop-smk37/" + {"stems": "", "mewcoder": "mewcoder/webapp/installer/",
+SITE = "https://milomeowzers.github.io/mewcoder-smk37/" + {"stems": "", "mewcoder": "mewcoder/webapp/installer/",
                                                         "harmoniser": "harmoniser/webapp/installer/"}[build]
 BNAME = {"stems": "Multichannel", "mewcoder": "Mewcoder", "harmoniser": "Mewcoder + Harmoniser"}[build]
 # "2.8.4-mewcoder-harmoniser-a8b1ae9" -> "2.8.4  a8b1ae9" (the boot screen's version line)
@@ -277,3 +277,29 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
              "</style>\n</head>", e)
     ed.write_text(e, encoding="utf-8")
     print(f"smk_site.py: {ed}: {n} x FM-1 -> SMK-37")
+
+# the vocoder builds' files named after the build, not SLOOP (the owner, 2026-11-21: "we don't want them named
+# sloop"): the installer's package (firmware/sloop-VER.fwsc, make_site.py's name: the installer checks its SHA-256,
+# not its name) and the editor's download name (download="sloop-editor-VER.html"). The Multichannel build is SLOOP
+# itself (2.8.1): its names stay
+if build in ("mewcoder", "harmoniser") and "-" in version:
+    stem = f"{'mewcoder' if build == 'mewcoder' else 'mewcoder-harmoniser'}-{version.split('-')[0]}-{version.split('-')[-1]}"
+    ed_name = f"{'mewcoder' if build == 'mewcoder' else 'mewcoder+harmoniser'}-{version.split('-')[0]}-{version.split('-')[-1]}-editor.html"
+    safe = re.sub(r"[^A-Za-z0-9.-]", "-", version)
+    old_pkg, new_pkg = f"sloop-{safe}.fwsc", f"{stem}.fwsc"
+    old_dl, new_dl = f'download="sloop-editor-{safe}.html"', f'download="{ed_name}"'
+    fw = out / "firmware" / old_pkg
+    if not fw.exists():
+        raise SystemExit(f"smk_site.py: {fw} not found (make_site.py's package name changed?)")
+    fw.rename(out / "firmware" / new_pkg)
+    hits = {"pkg": 0, "dl": 0}
+    for f in [p for p in out.rglob("*") if p.suffix in (".html", ".js", ".json", ".webmanifest")]:
+        t = f.read_text(encoding="utf-8")
+        u = t.replace(old_pkg, new_pkg).replace(old_dl, new_dl)
+        if u != t:
+            hits["pkg"] += t.count(old_pkg)
+            hits["dl"] += t.count(old_dl)
+            f.write_text(u, encoding="utf-8")
+    if not hits["pkg"] or not hits["dl"]:
+        raise SystemExit(f"smk_site.py: the package or the editor's download name not found ({hits})")
+    print(f"smk_site.py: files named {new_pkg}, {ed_name} ({hits})")

@@ -1,7 +1,7 @@
 # Enhanced SLOOP for the M-Vave SMK-37
 
 Enhanced versions of the SLOOP groovebox firmware on the M-Vave SMK-37 keyboard, in two distinct flavours. Install and edit from the browser:
-**[milomeowzers.github.io/sloop-smk37](https://milomeowzers.github.io/sloop-smk37/)**
+**[milomeowzers.github.io/mewcoder-smk37](https://milomeowzers.github.io/mewcoder-smk37/)**
 
 > Unofficial firmware, not affiliated with M-Vave. No warranty. **Back up the keyboard first** ([how](/SMK37.md#install)).
 
@@ -20,10 +20,10 @@ RAMP) and DAW mode. Every engine and the built-in samples. For the SMK-37 Pro, E
 | **DRUMS+RET** | kick, snare, hats, percussion, the effects return L and R | as SYNTHS+RET |
 | **ALL DRY** | T1, T2, T3, kick, snare, hats and percussion | as SYNTHS+RET |
 
-**[Install](https://milomeowzers.github.io/sloop-smk37/)** ·
-**[Editor](https://milomeowzers.github.io/sloop-smk37/elite/webapp/editor/)** ·
+**[Install](https://milomeowzers.github.io/mewcoder-smk37/)** ·
+**[Editor](https://milomeowzers.github.io/mewcoder-smk37/elite/webapp/editor/)** ·
 [Manual](/SMK37.md) ·
-[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/v2.8.1-smk37.1)
+[Release](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/v2.8.1-smk37.1)
 
 ## Mewcoder (vocoder)
 
@@ -44,11 +44,11 @@ turned off, the vocoder runs at 44.1 kHz. A lean build: some engines and the bui
 development:** a harmoniser modelled on the Eventide H949: your voice, another external sound, the drums or a synth
 engine pitch-shifted into up to three harmony voices.
 
-**[Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/)** ·
-**[Editor](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/editor/)** ·
-[Manual](https://github.com/MiloMeowzers/sloop-smk37/blob/mewcoder/VOCODER.md) ·
-[More](https://github.com/MiloMeowzers/sloop-smk37/tree/mewcoder) ·
-[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1)
+**[Install](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/installer/)** ·
+**[Editor](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/editor/)** ·
+[Manual](https://github.com/MiloMeowzers/mewcoder-smk37/blob/mewcoder/VOCODER.md) ·
+[More](https://github.com/MiloMeowzers/mewcoder-smk37/tree/mewcoder) ·
+[Release](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder-v0.1)
 
 ## Install
 
