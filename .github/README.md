@@ -20,15 +20,15 @@ builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37). *
 - **FADER BANK G: LANE IN** with a **meter** under each fader: each lane's input level (T2, T3, the drums; VOICE IN on
   F1), so the lanes balance by eye. The lanes now have **6 dB of headroom** inside and a smooth limiter: hot sources
   (an FM6 pad, a kick) stay clean. [How](/HARMONISER.md#a4-the-faders-banks-e-and-f-and-pickup).
-- **Punch page 2** (< or > on the punch page): choose which stems the punch-ins act on, and **BEAT REPEAT** per track,
+- **Selectable Punch In Effects** (< or > on the punch page): choose which stems the punch-ins act on, and **BEAT REPEAT** per track,
   a sequencer effect modelled on Ableton's Beat Repeat: latched, with MUTE and WET / DRY.
-  [How it works](/SMK37.md#page-2-the-stems-punched-and-beat-repeat).
+  [How it works](/SMK37.md#selectable-punch-in-effects-the-stems-punched-and-beat-repeat).
 - **POLY CAP AUTO** (the default): FM6 capped at 4 voices while HARMONY or the vocoder runs.
 - **STEMS > STEM LEVEL**: the stems at −18 (as before), −12 or −6 dB, for hotter 16-bit stems.
 - The vocoder's **smoother envelopes** and **QUALITY > FULL HQ**; **the cats** at power-on, on ABOUT and as a
   screensaver.
 
-![Punch page 2: T1 repeating and T3 muted; the knobs on T2; HOME > PUNCH 2](/assets/screens/smk37-punch-page2.png)
+![Selectable Punch In Effects: T1 repeating and T3 muted; the knobs on T2; HOME > PUNCH 2](/assets/screens/smk37-punch-page2.png)
 
 ## The harmoniser
 
