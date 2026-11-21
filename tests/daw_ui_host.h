@@ -17,7 +17,9 @@ static uint8_t stem_fx;
 static uint8_t stem_rate, stem_light;           /* (usb.c: menu USB > STEM RATE, STEM FILTER) */
 enum { TPX_128, TPX_64, TPX_256, TPX_N };   /* (smk_tpunch.h: menu PUNCH > XFADE, CURVE) */
 static uint8_t tp_xfl, tp_lin;
-static uint8_t br_trip = 1, br_var;             /* (smk_brep.h: menu PUNCH 2 > TRIPLETS, VARIATION) */
+static uint8_t br_trip = 1, br_var;
+enum { STLV_18, STLV_12, STLV_6, STLV_N };          /* (fx.c: menu STEMS > STEM LEVEL) */
+static uint8_t stem_lv;             /* (smk_brep.h: menu PUNCH 2 > TRIPLETS, VARIATION) */
 static void cats_open(uint32_t why) { (void)why; }   /* (splash.c: ABOUT's cats) */
 static uint8_t sq_carry;                       /* (smk_seqfx.h: menu SEQ > FLIP RETURN) */
 static uint8_t t_replug;

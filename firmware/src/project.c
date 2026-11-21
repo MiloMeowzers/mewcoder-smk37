@@ -900,7 +900,8 @@ static void smkset_fill(smkset_t *s)
     s->sqgrid = (uint8_t)(sq_grid % SQ_GRID_N);
     s->saver = (uint8_t)((cats_idle % CATS_IDLE_N) ^ CATS_IDLE_DEF);
     s->pmask = (uint8_t)((tp_sel & 15u) ^ 15u);
-    s->pflags = (uint8_t)!br_trip;                 /* (bits 1..3: FREEZE DELAY's until 2026-11-21: 0) */
+    s->pflags = (uint8_t)(!br_trip | (stem_lv % STLV_N) << 1);   /* (bits 1..2: STEM LEVEL; FREEZE DELAY's until
+                                                     * 2026-11-21) */
     s->rsv = br_var;
     {
         uint32_t k, i;
@@ -942,6 +943,7 @@ static int smkset_take(const uint8_t *b, uint32_t n)
             cats_idle = (uint8_t)(ix < CATS_IDLE_N ? ix : CATS_IDLE_DEF);
             tp_sel = (uint8_t)((s.pmask ^ 15u) & 15u);  /* (the punch's page 2; older: the defaults) */
             br_trip = (uint8_t)!(s.pflags & 1u);
+            stem_lv = (uint8_t)(((s.pflags >> 1) & 3u) < STLV_N ? (s.pflags >> 1) & 3u : 0u);
             br_var = (uint8_t)(s.rsv <= 10u ? s.rsv : 0u);
             for (k = 0; k < NTRK; k++)
                 for (i = 0; i < BR_NS; i++) {
@@ -1725,6 +1727,7 @@ UI_SMALL static void sections_flush(void)                        /* main loop */
             for (i = 0; i < BR_NS; i++)
                 h = (h ^ br_s[k][i]) * 16777619u;
         h = (h ^ tp_sel) * 16777619u, h = (h ^ br_trip) * 16777619u, h = (h ^ br_var) * 16777619u;
+        h = (h ^ stem_lv) * 16777619u;
 #if SMK_HARM_BUILD
         for (k = 1; k < 4u; k++)
             h = (h ^ (uint32_t)hm_lin[k]) * 16777619u;
