@@ -261,6 +261,14 @@ The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −1
   arrives from the computer).
 - AUTOCONTROL (the vocoder page) then keeps the level steady from there.
 
+### 2.7 LOAD: when the keyboard is busy
+
+The sound is made in halves of 5.8 ms on two cores. When a half comes close to running out of time, SLOOP **sheds a
+voice**: it fades one out (no click), first a note in its release tail, then the oldest held note, never a chord's
+bass or a mono lead. **LOAD** in the header (where USB shows) reports it: **orange** after a shed, **red** while it
+keeps happening (two or more a second), gone about 2 s after the last. To lighten it: POLY CAP (AUTO caps FM6 at 4;
+a busy track lower), fewer held notes or a lighter sound, a SETUP without the tracks you do not need, FULL HQ off.
+
 ## 3. The menus (HOME menu, PATCH held)
 
 | Section | Item | Values (default first, where there is one) | What it does |
