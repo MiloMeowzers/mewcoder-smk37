@@ -2,12 +2,12 @@
 
 SLOOP 2.8.4 with a vocoder, for the M-Vave SMK-37 Elite: **your voice, or any sound you choose, in over USB audio** on track 3, played dry or
 through a **20-channel vocoder** modelled on the Sennheiser VSM201, played from the keys and the sequencer. One of the
-two builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37).
+two builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/mewcoder-smk37).
 
-**[Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/)** ·
-**[Editor](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/editor/)** ·
+**[Install](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/installer/)** ·
+**[Editor](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/editor/)** ·
 [Manual](/VOCODER.md) ·
-[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1)
+[Release](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder-v0.2)
 
 > Unofficial firmware, not affiliated with M-Vave. No warranty. **Back up the keyboard first** ([how](/SMK37.md#install)).
 
@@ -51,12 +51,12 @@ its own, and the vocoder runs at **44.1 kHz (HQ)**. [How it all works](/VOCODER.
 - **The editor's Vocoder tab**, and everything else SLOOP and the Multichannel USB audio build have.
 
 **Left out to make room:** the built-in samples (your own samples work), the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and
-NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMeowzers/sloop-smk37).
+NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMeowzers/mewcoder-smk37).
 
 ## Start
 
 1. Back up the keyboard's flash ([how](/SMK37.md#install)) and your projects (the editor's Backup).
-2. [Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
+2. [Install](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
 3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
 4. HOME > INPUT > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
 5. A mono mic on one side: HOME > SETUP > **IN R: OFF** (or IN L), for its full level. HOME > **INPUT** shows each
@@ -64,9 +64,9 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 
 The [manual](/VOCODER.md) has the rest.
 
-**Want a harmoniser too?** [Mewcoder + Harmoniser](https://github.com/MiloMeowzers/sloop-smk37/tree/harmoniser) is
+**Want a harmoniser too?** [Mewcoder + Harmoniser](https://github.com/MiloMeowzers/mewcoder-smk37/tree/harmoniser) is
 this build with one modelled on the Eventide H949: your voice, the drums or a synth pitch-shifted into up to three
 harmony voices, on the same routing.
 
-Branch `mewcoder` · release [`mewcoder-v0.1`](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1) ·
+Branch `mewcoder` · release [`mewcoder-v0.2`](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder-v0.2) ·
 how it was built: [VOCODER-DESIGN.md](/VOCODER-DESIGN.md) · GPL-3.0-only
