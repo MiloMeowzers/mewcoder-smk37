@@ -3,12 +3,12 @@
 SLOOP 2.8.4 for the M-Vave SMK-37 Elite with **Mewcoder's vocoder** and now **its own harmoniser**: your voice, or any
 sound you choose, in over USB audio, played dry, through a **20-channel vocoder** modelled on the Sennheiser VSM201, or
 into **up to three harmony voices** modelled on the Eventide H949, with a lane of it across every track. One of the
-builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/sloop-smk37). **Early testing / pre-release.**
+builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/mewcoder-smk37). **Early testing / pre-release.**
 
-**[Install](https://milomeowzers.github.io/sloop-smk37/harmoniser/webapp/installer/)** ·
-**[Editor](https://milomeowzers.github.io/sloop-smk37/harmoniser/webapp/editor/)** ·
+**[Install](https://milomeowzers.github.io/mewcoder-smk37/harmoniser/webapp/installer/)** ·
+**[Editor](https://milomeowzers.github.io/mewcoder-smk37/harmoniser/webapp/editor/)** ·
 [Harmoniser manual](/HARMONISER.md) · [Vocoder manual](/VOCODER.md) ·
-[Release](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder%2Bharmoniser-v0.2-pre)
+[Release](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder%2Bharmoniser-v0.3-pre)
 
 > Unofficial firmware, not affiliated with or endorsed by M-Vave or Eventide. No warranty. **Back up the keyboard
 > first** ([how](/SMK37.md#install)).
@@ -50,17 +50,17 @@ play intervals from T1's keys, the interval pads, MIDI or the sequencer.
 
 ## The vocoder (Mewcoder)
 
-Everything from [Mewcoder v0.1](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1): track 3 plays
+Everything from [Mewcoder v0.2](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder-v0.2): track 3 plays
 the computer's audio dry or through the vocoder, two USB inputs each routed on the keyboard (TRACK 3, CARRIER, T1, T2,
 HARMONY, OFF), SETUP, the vocoder page and the editor's tab, now **Vocoder · Harmony**.
 
 **Left out to make room:** the built-in samples (your own samples work), the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and
-NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMeowzers/sloop-smk37).
+NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMeowzers/mewcoder-smk37).
 
 ## Start
 
 1. Back up the keyboard's flash ([how](/SMK37.md#install)) and your projects (the editor's Backup).
-2. [Install](https://milomeowzers.github.io/sloop-smk37/harmoniser/webapp/installer/) (Chrome or Edge, over USB).
+2. [Install](https://milomeowzers.github.io/mewcoder-smk37/harmoniser/webapp/installer/) (Chrome or Edge, over USB).
 3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
 4. HOME > INPUT > **AUDIO IN: ON**; HOME > HARMONY > **HARMONY: ON: T1**; HOME > SETUP > **IN R: HARMONY** (the side
    your voice is on).
@@ -69,5 +69,5 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 The [harmoniser manual](/HARMONISER.md) has the rest; how it was tested, and how to keep a heavy setup in time, in
 [A13](/HARMONISER.md#a13-built-and-tested-for-heavy-use).
 
-Branch `harmoniser` · release [`mewcoder+harmoniser-v0.2-pre`](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder%2Bharmoniser-v0.2-pre) ·
+Branch `harmoniser` · release [`mewcoder+harmoniser-v0.3-pre`](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder%2Bharmoniser-v0.3-pre) ·
 GPL-3.0-only
