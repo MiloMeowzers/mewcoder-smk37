@@ -144,6 +144,14 @@ jobs:
           # the mewcoder branch (uac-in on the private repository) in a worktree of its own, built as that branch's own
           # CI builds it (the console build, SMK_UAC_IN_PROBE, SMK_VOC_LEAN); its installer and editor from its own web/
           ref=${{ github.event.repository.private && 'uac-in' || 'mewcoder' }}
+          # (the public site: the latest release, mewcoder-v*, not the branch's head: the installer installs exactly
+          # the released build; the branch's head when there is no release, as on the private repository)
+          if [ "${{ github.event.repository.private }}" != "true" ]; then
+            git fetch -q --tags origin
+            t=$(git tag --list 'mewcoder-v*' --sort=-v:refname | head -1)
+            [ -z "$t" ] || ref="refs/tags/$t"
+          fi
+          echo "Mewcoder's site from $ref"
           git fetch -q origin "$ref"
           git worktree add ../mewcoder FETCH_HEAD
           out="$GITHUB_WORKSPACE/out"
@@ -164,7 +172,14 @@ jobs:
         run: |
           # the harmoniser branch in a worktree of its own, built as that branch's own CI builds it; its installer and
           # editor from its own web/ (the editor that knows the harmoniser)
-          git fetch -q origin harmoniser
+          ref=harmoniser
+          if [ "${{ github.event.repository.private }}" != "true" ]; then   # (the latest release, as Mewcoder's)
+            git fetch -q --tags origin
+            t=$(git tag --list 'mewcoder+harmoniser-v*' --sort=-v:refname | head -1)
+            [ -z "$t" ] || ref="refs/tags/$t"
+          fi
+          echo "Mewcoder + Harmoniser's site from $ref"
+          git fetch -q origin "$ref"
           git worktree add ../harmoniser FETCH_HEAD
           out="$GITHUB_WORKSPACE/out"
           cd ../harmoniser
