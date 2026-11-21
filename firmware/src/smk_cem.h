@@ -76,7 +76,7 @@ static void cem_warm_calc(void)                  /* (both cores may run it at on
     int32_t sl, s2, s4, tb = (int32_t)(w > 100u ? 100u : w) * (CEM_ONE / 200), thb = cem_th(tb);   /* (0.5 at 100) */
     sl = (1 << 30) - (int32_t)(((int64_t)thb * thb) >> 18);
     s2 = CEM_M30(sl, sl), s4 = CEM_M30(s2, s2);
-    cem_kw = (int32_t)(((int64_t)1 << 58) / s4);                /* (up to 2.6 at WARMTH 100) */
+    cem_kw = (int32_t)(((uint64_t)1 << 58) / (uint32_t)s4);                /* (up to 2.6 at WARMTH 100) */
     cem_tb = tb, cem_thb = thb;
     cem_wseen = w;
 }
@@ -103,12 +103,12 @@ static void cem_coef(cem_t *c, int32_t cut, int32_t res, uint32_t lad, int32_t h
     k = res * (int32_t)(4.3 * 16777216.0 / 127);                 /* Q24 */
     kl = lad ? k : (int32_t)(((int64_t)k * cem_kw) >> 28);
     den = CEM_ONE + (((int64_t)kl * G4) >> 31);                  /* 1 + k G^4, Q24 */
-    inv = ((int64_t)1 << 54) / den;                              /* Q30 */
+    inv = (int64_t)(((uint64_t)1 << 54) / (uint64_t)den);                              /* Q30 */
     c->kinv = (int32_t)(((int64_t)kl * inv) >> 27);              /* Q27 (up to 11.3) */
     h = lad ? hot : ((int64_t)hot * (CEM_ONE + (k * 7) / 10)) >> 24;   /* hot (1 + 0.7 k), Q24 */
     h = (h * pre) >> 24;
     c->inm = (int32_t)((h * inv) >> 28);                         /* .. / (1 + k G^4), Q26 */
-    o = ((int64_t)1 << 50) / ((((int64_t)hot * 4) / 5 * pre) >> 24);   /* 1 / (0.8 hot pre), Q26 */
+    o = (int64_t)(((uint64_t)1 << 50) / ((((uint64_t)hot * 4u) / 5u * (uint64_t)pre) >> 24));   /* 1 / (0.8 hot pre), Q26 */
     c->hpm = (int32_t)o;
     if (lad)
         o = (o * (CEM_ONE + k / 2)) >> 24;                       /* LADDER: x (1 + 0.5 k) */
