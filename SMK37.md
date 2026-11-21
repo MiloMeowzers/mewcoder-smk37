@@ -24,11 +24,13 @@ All of SLOOP 2.8.4 (four tracks, the sequencer, the 27 punch-in effects, the web
 | **The keyboard** | 37 velocity keys (the lowest five play drums on the drum track), 16 RGB pads (drum kit or steps), 4 faders, 8 knobs (FM-1 or SMK layout), pitch and mod wheels with a settable bend range, TRS MIDI out | [Knobs](#knobs-faders-wheels), [Buttons](#buttons), [Keys and pads](#keys-and-pads), [Velocity](#velocity) |
 | **Samples and kits** | four 40 KiB user slots, a kit over two of them (about 7 s) | [User samples](#user-samples-and-drum-kits) |
 | **The pad sound picker** | turn PRESETS: the sounds or kits on the pads, a pad loads and previews | [The pad sound picker](#the-pad-sound-picker) |
-| **USB audio stems** | six mono channels, 24 bit, to the DAW: drums in four groups, the synths, the reverb / delay return; 48 or 44.1 kHz; a layout change re-plugs USB by itself | [USB audio stems](#usb-audio-stems) |
+| **USB audio stems** | six mono channels, 24 bit, to the DAW: drums in four groups, the synths, the reverb / delay return; 48 or 44.1 kHz; a layout change re-plugs USB by itself; STEM LEVEL −18 / −12 / −6 dB | [USB audio stems](#usb-audio-stems) |
 | **Punch-ins on the stems** | STEM FX: the rhythmic punch-ins (loops, stutter, reverse, stop, half, rewind, gate) on every stem, seamless loop joins, settable stitches (HOME > PUNCH: FADE, XFADE, CURVE) | [STEM FX](#usb-audio-stems) |
 | **The stem punch-in page** | FX held (or locked with FX + FADER BANK): the pads as four colour rows, rows 1-3 the stem punch-ins, FREEZE | [the page](#the-stem-punch-in-page) |
+| **Punch page 2, BEAT REPEAT** | < or > on the punch page: which stems the punch acts on, and BEAT REPEAT per track (a sequencer effect modelled on Ableton's Beat Repeat), latched, with MUTE and WET / DRY | [Page 2](#page-2-the-stems-punched-and-beat-repeat) |
 | **Sequencer effects** | row 4 of the page: FLIP (backwards), LOOP BACK (2 bars .. 1/16, changeable while held), RAMP UP / DOWN (tempo ramps; the DAW stays the clock master); recorded and replayed as MIDI | [Sequencer effects](#sequencer-effects-row-4) |
 | **DAW mode** | < + >: the whole keyboard as a MIDI controller, with an editable CC map | [DAW mode](#daw-mode) |
+| **The cats** | dancing cats at power-on (any key, pad or button skips them), on HOME > ABOUT with the build's name and version, and as a screensaver (LIGHTS > SCREENSAVER) | [HOME menu](#home-menu-the-smk-37-settings) |
 | **Punch-in MIDI out** | each punch-in sends its key's note on FX CH, so a DAW records and replays a performance | [HOME menu](#home-menu-the-smk-37-settings) (FX CH) |
 | **Mewcoder (the vocoder build)** | track 3 as an audio track: your voice over USB through a 20-channel vocoder modelled on the Sennheiser VSM201, with its own page (the 20 channels on the knobs and pads) | [Mewcoder](#mewcoder-the-vocoder-build), [VOCODER.md](VOCODER.md) (the manual) |
 
@@ -167,7 +169,7 @@ notes, their MIDI out and the drum levels; OCT− / OCT+ held still play ghost /
 
 ## HOME menu: the SMK-37 settings
 
-HOME menu (PATCH held; sections SCREEN, LIGHTS, AUDIO, USB, SEQ, PLAY, MIDI, DAW, SYSTEM: every row the SLOOP manual lists is in
+HOME menu (PATCH held; sections SCREEN, LIGHTS, AUDIO, USB, STEMS, PUNCH, PUNCH 2, SEQ, PLAY, MIDI, DAW, SYSTEM: every row the SLOOP manual lists is in
 its section, as on the FM-1, and the SMK-37's own are below); SELECT walks the sections, the knobs set the rows (K5–K8, or K1–K4 with KNOB LAYOUT = SMK;
 the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ REC still start / stop and arm:
 
@@ -175,14 +177,18 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 |---|---|---|---|
 | SCREEN | KNOB LAYOUT | K7 | FM-1 (default): K1 MASTER, K2 SELECT, K3 ALGORITHM, K4 PRESETS, K5–K8 the dials. SMK: K1–K4 the dials, K5 MASTER, K6 SELECT, K7 PRESETS, K8 ALGORITHM. The knobs are endless: the new layout works at once. Switched to SMK, the menu's rows move to K1–K4 (K3 switches back) |
 | SCREEN | KNOB ACCEL | K8 | SLOOP's: ON (default), a fast turn moves further; OFF, one value a detent |
+| LIGHTS | SCREENSAVER | K8 | the dancing cats after this long untouched with the sequencer stopped: OFF, 1, 2, **5 MIN** (default), 10 or 30 MIN. Any key, pad, knob, fader or button brings the screen back (and does nothing else); MIDI and USB audio play on underneath. Kept |
 | USB | USB LAYOUT | K5 | STEREO (default): the USB audio input as on the FM-1. DRUMS+RET, SYNTHS+RET, ALL DRY: [stems](#usb-audio-stems) for a DAW. A moment after the knob stops the keyboard re-plugs itself on USB (~1 s; RE-PLUG shows meanwhile) |
 | USB | STEM RATE | K6 | with a stem layout: 48 KHZ (default; resampled on the keyboard) or 44.1 KHZ (the lightest: the engines' own samples, the computer converts); **48 / 16 BIT** or **44.1 / 16**: 16-bit stems for a single-TT USB hub (about 78 dB below a full stem; with AUDIO IN, 24-bit stems do not fit such a hub's budget). Re-plugs as USB LAYOUT |
 | USB | STEM FILTER | K7 | at 48 KHZ: FULL (default; 12 taps, the cleanest top end) or LIGHT (8 taps, a third less of the stems' resampling, for busy patterns: −1.3 dB at 14 kHz, −2.8 dB at 16 kHz). At once |
 | USB | STEREO PAIR | K8 | with SYNTHS+RET (the harmoniser build): channels 5-6 RET (default: the effects return, as before), DRUMS, T1, T2 or T3: that source in stereo (a track after its pan, the drums at their sounds' pans), the effects return mono in the channel it left (DRUMS: SYN 1, SYN 2, SYN 3, RET, DRUMS L, DRUMS R). Beside it: RET MONO / ON CH n (where the return went); amber, NEEDS SYNTHS+RET, in the other layouts. The DAW's channel names at the next plug. Kept. (AUDIO IN, the vocoder build's, is under INPUT) |
+| STEMS | STEM LEVEL | K5 | with a stem layout: where the stereo mix's full scale sits on a stem, **−18 DB** (default, as before), −12 or −6 DB. Higher fills more of a 16-bit stem's range (STEM RATE ../16), with less room before a loud moment clips: there is no limiter on the stems. At once; kept |
 | PUNCH | STEM FX | K5 | with a stem layout: SLICER (default; each track's SLICER STUT, the punch-ins on the master only), PUNCH or PUNCH HQ (the rhythmic punch-ins on every stem; [below](#usb-audio-stems)). At once |
 | PUNCH | FADE | K6 | the punch-ins' fade in and out, 0 (default, the shortest) .. 15: the same setting as SELECT on the FX page (shown large at its top right). OCT+ back to 0 |
 | PUNCH | XFADE | K7 | with STEM FX: the shortest stitch on the stems (a punch in or out), 1.5 / 2.9 (default) / 5.8 MS; FADE makes it longer. At once |
 | PUNCH | CURVE | K8 | with STEM FX: EQUAL (default; the level holds through a stitch between unrelated audio) or LINEAR (the old ramp, ~3 dB down half way). A fresh loop's punch-in (the same audio both sides) stays linear. At once |
+| PUNCH 2 | TRIPLETS | K5 | [BEAT REPEAT](#page-2-the-stems-punched-and-beat-repeat)'s GRID with the triplets 1/6, 1/12, 1/24, 1/48: **ON** (default) / OFF (1/4, 1/8, 1/16, 1/32, 1/64 only; Ableton's NO TRIPLETS). Kept |
+| PUNCH 2 | VARIATION | K6 | BEAT REPEAT: each repeat's GRID chosen at random around the set one, 0 (default: a fixed grid) .. 10. Kept |
 | SEQ | FLIP RETURN | K7 | the stem page's FLIP and LOOP BACK, let go: SLIP (default; the tracks come back where they would have been) or CARRY (they go on from where the effect left them). At once |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND; Mewcoder: GLO > MIDI IN/OUT > BEND) |
@@ -275,6 +281,55 @@ In detail:
 - **FX + FADER BANK** locks the FX layer open (FADER BANK lit): no holding FX. FADER BANK again, or any other button but
   PLAY, REC and OCT, lets it go. (SLOOP's own lock, FX held + PATCH tapped, works too.)
 
+### Page 2: the stems punched and BEAT REPEAT
+
+On the punch page (FX held or locked), tap **<** or **>**: page 2. It latches (the FX layer stays open: let go of FX);
+< or > again turns back to the punch page. It works in every USB LAYOUT. The main punch page stays the performance
+page; page 2 is for setting up and leaving.
+
+![Punch page 2: T1 repeating and T3 muted, the knobs on T1; the knobs on T2; HOME > PUNCH 2](assets/screens/smk37-punch-page2.png)
+
+| Pads | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| **Top** | PUNCH T1 | PUNCH T2 | PUNCH T3 | PUNCH DRUMS | REPEAT T1 | REPEAT T2 | REPEAT T3 | REPEAT DRUMS |
+| **Bottom** | KNOBS T1 | KNOBS T2 | KNOBS T3 | KNOBS DRUMS | MUTE T1 | MUTE T2 | MUTE T3 | MUTE DRUMS |
+
+- **PUNCH (top 1-4): which stems the punch-ins act on** (STEM FX = PUNCH / PUNCH HQ). Lit in the track's colour =
+  punched, dark = it plays on dry. All four on by default. A stem left out keeps no ring, so the others get its
+  memory (drums alone: the longest past). Kept.
+- **REPEAT (top 5-8): BEAT REPEAT on / off per track, latched.** Lit in the track's colour while on; a short dim white
+  flash at each INTERVAL; white while a repeat plays (the pad and its cell on the screen). Off at power-on and on a
+  project load.
+- **KNOBS (bottom 1-4): the track the knobs set.** One lit. **Shortcut:** hold that pad and turn a knob: the value
+  goes to all four tracks (the header says ALL).
+- **MUTE (bottom 5-8)**, red: that track's repeats not heard (100 % dry), its BEAT REPEAT left on and its settings
+  kept for when you unmute.
+
+**BEAT REPEAT** (modelled on Ableton's Beat Repeat) is a sequencer effect: it repeats **notes**, not audio, so it
+costs no audio memory and the stems, the stereo mix and MIDI out all follow. On a track, at each INTERVAL (shifted by
+OFFSET) it fires with CHANCE; firing, it captures the notes the track plays over one GRID (the sequence's, after FLIP
+and LOOP BACK, and the keys') and plays them again every GRID until GATE has passed, each repeat quieter (DECAY) and
+lower (PITCH). The knobs, as printed on the panel (the screen shows the same grid, the one turned last outlined):
+
+| Knob | Setting | Range | Default |
+|---|---|---|---|
+| K1 | INTVL (INTERVAL): how often it may fire | 1/32, 1/16, 1/8, 1/4, 1/2, 1 BAR, 2 BARS, 4 BARS | 1 BAR |
+| K2 | OFFSET: where in the INTERVAL it fires | 0/16 .. 15/16 | 0/16 |
+| K3 | GRID: the length repeated | 1/4, 1/6, 1/8, 1/12, 1/16, 1/24, 1/32, 1/48, 1/64 (the triplets with PUNCH 2 > TRIPLETS) | 1/16 |
+| K4 | CHANCE: that it fires at an INTERVAL | 0 .. 100 % | 100 % |
+| K5 | GATE: how long it repeats | 1/16 .. 64/16 | 4/16 |
+| K6 | DECAY: each repeat quieter | 0 .. 100 % | 0 % |
+| K7 | PITCH: each repeat lower (not on the drums) | 0 .. −48 semitones | 0 |
+| K8 | WET/DRY: the repeats against the track's own notes | 0 (only the track) .. 50 (both full) .. 100 (only the repeats while they play) | 50 |
+
+- The settings are kept with the keyboard, per track (and read by the editor); PUNCH 2 in the HOME menu has
+  TRIPLETS and VARIATION.
+- A harmoniser track (its notes are intervals) and an audio-in track (its notes play nothing) capture nothing.
+- Fast GRIDs restart voices often: POLY CAP AUTO keeps FM6 in check ([VOCODER.md](VOCODER.md)). The timing is the
+  audio block's (within 5.8 ms); GRIDs under a step land between steps as the block allows.
+- **MIDI:** on FX CH, notes 84-87 latch BEAT REPEAT on T1-T4 (note on = on, note off = off), so a DAW's recording
+  replays exactly. The settings are not sent.
+
 ### Sequencer effects (row 4)
 
 Row 4 of the page (yellow) changes what the sequencer plays rather than the audio, so the stems, the stereo mix and
@@ -301,7 +356,12 @@ MIDI out all follow; they work with any STEM FX and any USB LAYOUT. Each while h
 ### Levels, rates and the USB device
 
 - A fixed level: the stems follow neither MASTER nor USB AUDIO (set the levels in the DAW). The stereo output's full
-  scale sits at −18 dBFS in the stems: 18 dB of headroom for the sum of six of them, and no limiter on them.
+  scale sits at −18 dBFS in the stems (HOME > STEMS > **STEM LEVEL**, the default): 18 dB of headroom for the sum of
+  six of them, and no limiter on them. If you find yourself adding 6 dB or more to every stem in the DAW (most with
+  16-bit stems), set **−12 DB** (or −6): the stems come in that much hotter and use more of their range. A stem that
+  peaks past its full scale clips (it does not wrap): back off a step if the DAW's meters show it.
+
+  ![HOME > STEMS > STEM LEVEL at -18 DB (the default) and -12 DB](assets/screens/smk37-stem-level.png)
 - One rate at a time (6 channels of 24 bit fill a full-speed USB packet): **STEM RATE** 48 KHZ (default) or 44.1 KHZ.
 - **Through a USB hub:** a hub with a single TT (most) budgets about 1000 bytes a millisecond for full-speed audio. 24-bit stems reserve 882 (828 at 44.1); with AUDIO IN (196 more) that does not fit and the audio in drops out when the stems open. **STEM RATE 48 / 16 BIT** (or 44.1 / 16) reserves 588 / 552 and fits. A port on the computer itself needs none of this.
   The FM-1's USB RATE does not apply. At 48 kHz the stems are resampled on both cores, shared by the work each has

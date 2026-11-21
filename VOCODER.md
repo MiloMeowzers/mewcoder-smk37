@@ -10,17 +10,17 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 
 | | |
 |---|---|
-| **Base** | SLOOP 2.8.4, with all the Multichannel USB audio build adds: punch-in effects on every channel, the punch-in page on the pads, sequencer effects (FLIP, LOOP BACK, RAMP), DAW mode |
+| **Base** | SLOOP 2.8.4, with all the Multichannel USB audio build adds: punch-in effects on every channel, the punch-in page on the pads and its page 2 (the stems punched, BEAT REPEAT), sequencer effects (FLIP, LOOP BACK, RAMP), DAW mode, STEM LEVEL ([SMK37.md](SMK37.md#page-2-the-stems-punched-and-beat-repeat)) |
 | **Keyboard** | SMK-37 Elite only |
 | **Tracks** | T1 and T2 (synths); **T3** the audio track (INPUT > AUDIO IN: ON: the input dry or vocoded) or a synth (AUDIO IN: OFF); the drums |
 | **Input level** | HOME > INPUT: **TRIM L**, **TRIM R** (−18 .. +6 dB) with a meter each. Section 2.6 |
 | **Configurations** | HOME > SETUP: **FULL** (every track), **VOC + DRUMS** (T1, T2 off), **VOC + SYNTH** (the drums off), **VOC ALONE** (T1, T2 and the drums off). Section 2.1 |
 | **USB audio in** (from the computer) | 2 channels, 48 kHz, each side routed on its own (HOME > SETUP > IN L, IN R): **TRACK 3** (the voice), **CARRIER** (an external synth), **T1** or **T2** (an instrument through that track), **HARMONY** (into the harmoniser, while HARMONY is on), **OFF**. Section 2.2 |
 | **USB audio out** (to the computer) | HOME > USB > USB LAYOUT: **STEREO** (the mix; 44.1 or 48 kHz, HOME > AUDIO > USB RATE), or 6 channels, 24 bit, **48 kHz** (default, resampled on the keyboard) or **44.1 kHz** (the lightest; HOME > USB > STEM RATE): **SYNTHS+RET** (T1, T2, T3, the drums, the effects return L and R), **DRUMS+RET** (kick, snare, hats, percussion, the return L and R), **ALL DRY** (T1, T2, T3, kick, snare, hats and percussion) |
-| **The vocoder** | 20 channels at the Sennheiser VSM201's centres, 145 Hz to 6.78 kHz, each a 4th-order band-pass. The voice analysed at 22.05 kHz; the output at 22.05 kHz in FULL, **44.1 kHz (HQ)** in the other SETUPs |
+| **The vocoder** | 20 channels at the Sennheiser VSM201's centres, 145 Hz to 6.78 kHz, each a 4th-order band-pass. The voice analysed at 22.05 kHz, each band's envelope smoothed twice; the output at **44.1 kHz (HQ)** in the SETUPs that turn tracks off, and in FULL at 22.05 kHz or HQ (QUALITY > FULL HQ) |
 | **The carrier** | HOME > SETUP > CARRIER: the built-in saw, one or two a note (**AUTO**, **1 SAW**, **2 SAWS**), played from the keys, the sequencer or MIDI on track 3's channel; or **EXT L** / **EXT R**: an external synth on that input, gated by track 3's notes. Section 2.4 |
 | **Shaping** | ENVELOPE (ATTACK 3-30 ms, RELEASE 8-100 ms, GATE DELAY, BRIDGE MODE FIXED / FOLLOW); voiced / unvoiced detection with a noise source (WHITE, PINK, SOFT); the speech addition (HF, OFF or −30 .. 0 dB); silence bridging and BRIDGE TONE; AUTOCONTROL (the voice's level, steadied); the carrier's AGC; RESPONSE (FLAT, the VSM201's NORMAL, EMPHASIS); per channel on the vocoder page: EMPHASIS, ADDITION, BRIDGING, mute |
-| **The harmoniser** (this branch) | HOME > HARMONY ON: track 1 becomes a harmoniser after the Eventide H949, three voices from your voice and a lane across each track you send (T2, T3, the drums), each harmonised on its own channel. **The vocoder is off while HARMONY is on** (MODE locked to AUDIO): [HARMONISER.md](HARMONISER.md) |
+| **The harmoniser** (the Mewcoder + Harmoniser build only) | HOME > HARMONY ON: track 1 becomes a harmoniser after the Eventide H949, three voices from your voice and a lane across each track you send (T2, T3, the drums), each harmonised on its own channel. **The vocoder is off while HARMONY is on** (MODE locked to AUDIO): [HARMONISER.md](HARMONISER.md) |
 | **Left out to make room** | the built-in samples (your own samples work); the TEXTURE, DIGITAL, LOFI, VOICE, TRIO and NOISE engines; the delay runs at 22.05 kHz. For those: the Multichannel USB audio build |
 
 ## 1. Getting sound in
@@ -77,7 +77,7 @@ The help text beside IN L / IN R says what the choice does: **TRACK 3** reads **
 
 | SETUP | T1, T2 | Drums | The vocoder |
 |---|---|---|---|
-| **FULL** (default) | play | play | **22.05 kHz**, as before |
+| **FULL** (default) | play | play | **22.05 kHz**, as before; **HQ** with QUALITY > FULL HQ (below) |
 | **VOC + DRUMS** | off | play | **HQ: 44.1 kHz** |
 | **VOC + SYNTH** | play | off | **HQ: 44.1 kHz** |
 | **VOC ALONE** | off | off | **HQ: 44.1 kHz**, two saws on the built-in carrier (CARRIER AUTO) |
@@ -85,6 +85,10 @@ The help text beside IN L / IN R says what the choice does: **TRACK 3** reads **
 - **HQ** runs the vocoder's 20 output filters at the full 44.1 kHz: crisper consonants and more air on the noise and the
   speech addition. The time comes from the tracks the SETUP turns off. Measured on the unit with a busy sequence:
   every SETUP plays without overload, VOC + DRUMS and VOC ALONE with room to spare.
+- **QUALITY > FULL HQ** (OFF by default): HQ in FULL too, with every track playing. It costs the time the other
+  SETUPs take from the tracks they turn off (about 0.8 ms of each 5.8 ms block), so on a busy scene voices may be
+  shed: keep POLY CAP on (AUTO caps FM6, the costliest engine, at 4 voices) or cap a busy track lower. A switch for
+  now, to compare on your own sounds; dim in the other SETUPs (already HQ) and with the vocoder off.
 - **A track turned off** takes no new notes at once, lets its notes release, and stops about 0.4 s later. Its
   patterns, sounds and settings are all kept, and it plays again as soon as you go back to a SETUP that has it. The
   sequencer keeps running; the metronome still clicks with the drums off.
@@ -193,6 +197,9 @@ The row always tells the truth: setting IN L or IN R to CARRIER by hand shows EX
 | **GATE DELAY** | 0 .. 50 ms (5 ms steps) | an external carrier's gate held open after the last note (2.4) |
 | **BRIDGE MODE** | FIXED, FOLLOW | how SILENCE > BRIDGE fills the pauses (below) |
 
+Each band's envelope is smoothed a second time (a gentle one-pole after ATTACK and RELEASE): less ripple on held
+vowels, a smoother, fuller sound, in every SETUP. Built in, no setting; ATTACK and RELEASE act as before.
+
 **BRIDGE MODE.** **FIXED** (the default, as before): in a pause the carrier plays at BRIDGE's level, whatever level
 your words came in at; turned up, the pauses can be louder than the words, and each word then starts as a drop, a
 rough, choppy edge. **FOLLOW**: the bridge keeps the pauses below your recent words (about 8 dB under them; BRIDGE is
@@ -278,17 +285,18 @@ The small tick marks **−10 dBFS**: aim your voice's loud peaks there (AIM −1
 | | COLOUR | 100 % | how much of your voice's last shape stays on the bridge in a pause |
 | | BLEND | SUM, FILL | the bridge added to the vocoder, or filling in under it |
 | | RESPONSE | FLAT, NORMAL, EMPHASIS | the synthesis weights: flat; the VSM201's NORMAL tilt; NORMAL with the page's per-channel EMPHASIS |
+| QUALITY | FULL HQ | OFF, HQ | HQ (44.1 kHz synthesis) in FULL too (2.1) |
 | ENVELOPE | ATTACK | 3 ms (3 .. 30) | how fast the bands open (2.5) |
 | | RELEASE | 8 ms (8 .. 100) | how fast they close |
 | | GATE DELAY | 0 ms (0 .. 50) | an external carrier's gate held after the last note |
 | | BRIDGE MODE | FIXED, FOLLOW | FOLLOW: the pauses below your words, a smooth pickup into each word (2.5) |
-| HARMONY | HARMONY | OFF, ON: T1 | track 1 becomes the harmoniser ([HARMONISER.md](HARMONISER.md)) |
+| HARMONY | HARMONY | OFF, ON: T1 | Mewcoder + Harmoniser only (as LANE THIN and LANE RATE): track 1 becomes the harmoniser ([HARMONISER.md](HARMONISER.md)) |
 | | INTERVALS | FIXED, SCALE | the keys as fixed intervals from C4, or counted from the sung note in the song's key |
 | | SUNG NOTE | (a readout) | the note the harmoniser hears (INTERVALS SCALE) |
 | | LANE MONO | WITH STEMS, OFF | the lanes' voices mono while the stems stream ([HARMONISER.md A8.0](HARMONISER.md#a80-the-load-settings-home-menu)) |
 | LANE THIN | VOICE, T2, T3, DRUMS | ON, ON, ON, OFF | a lane's sounding voice faded first under load, before a synth voice is shed |
 | LANE RATE | VOICE, T2, T3, DRUMS | 44.1K, 22K | a lane's voices at half rate (about half their work) |
-| POLY CAP | T1, T2, T3 | OFF, 1 .. 5 | while HARMONY or the vocoder runs, that track's synth plays at most that many voices (kept with each project) |
+| POLY CAP | T1, T2, T3 | **AUTO** (4 voices while the track plays FM6, no cap on other engines), OFF, 1 .. 5 | while the vocoder (or HARMONY) runs, that track's synth plays at most that many voices: FM6 is by far the costliest engine, and a 4-voice cap on it keeps a full scene in time. The row shows what AUTO does now (AUTO: 4 / AUTO: OFF); dim while it does nothing. Kept with each project; an older project loads AUTO |
 
 Everything here is also on the vocoder page or the web editor's **Vocoder** tab.
 
@@ -437,7 +445,8 @@ instead:
   describe your studio, not a song.
 - A **full backup** from the web editor includes them (backup object 14), with the SMK-37's settings (12) and the DAW
   map (13). With the harmoniser, object 14 also holds HARMONY, INTERVALS, the HARMONY page, fader banks E and F, the
-  lane settings and POLY CAP (532 bytes; an older 480- or 512-byte backup restores with what it lacks at its defaults).
+  lane settings, FADER BANK G's LANE IN and POLY CAP (536 bytes; an older 480-, 512- or 532-byte backup restores with
+  what it lacks at its defaults).
 
 ## 7. The web editor
 

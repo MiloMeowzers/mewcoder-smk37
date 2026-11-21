@@ -25,6 +25,21 @@ The USB input's left and right sides are **two sources of their own**. Your voic
 **SETUP** chooses which of SLOOP's tracks play beside the vocoder. Turn T1 and T2 or the drums off when your DAW brings
 its own, and the vocoder runs at **44.1 kHz (HQ)**. [How it all works](/VOCODER.md#2-setup-and-the-two-inputs).
 
+## New in this release
+
+- **Punch page 2** (< or > on the punch page): choose which stems the punch-ins act on, and **BEAT REPEAT** per track,
+  a sequencer effect modelled on Ableton's Beat Repeat: latched, with MUTE and WET / DRY, its eight settings on the
+  knobs. [How it works](/SMK37.md#page-2-the-stems-punched-and-beat-repeat).
+- **Smoother envelopes** on every band: a fuller, steadier vocoder sound, built in.
+- **QUALITY > FULL HQ**: the 44.1 kHz synthesis in FULL too (off by default while it is compared).
+- **POLY CAP AUTO** (the default): FM6, the costliest engine, capped at 4 voices while the vocoder runs.
+- **STEMS > STEM LEVEL**: the stems at −18 (as before), −12 or −6 dB, for hotter 16-bit stems.
+- From the harmoniser build: the LEVEL fader's law, FADER BANK pickup, USB > STEREO PAIR, the LOAD warning, AUDIO IN
+  under INPUT.
+- **The cats**: dancing at power-on, on HOME > ABOUT, and as a screensaver (LIGHTS > SCREENSAVER).
+
+![Punch page 2: T1 repeating and T3 muted; the knobs on T2; HOME > PUNCH 2](/assets/screens/smk37-punch-page2.png)
+
 ## What you get
 
 - **An audio track:** track 3 plays the computer's audio (your microphone, an instrument, any recording) dry or vocoded.
@@ -43,14 +58,15 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 1. Back up the keyboard's flash ([how](/SMK37.md#install)) and your projects (the editor's Backup).
 2. [Install](https://milomeowzers.github.io/sloop-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
 3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
-4. HOME > USB > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
+4. HOME > INPUT > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
 5. A mono mic on one side: HOME > SETUP > **IN R: OFF** (or IN L), for its full level. HOME > **INPUT** shows each
    side's level: trim your voice until its peaks sit near the −10 tick.
 
 The [manual](/VOCODER.md) has the rest.
 
-**In development:** a harmoniser modelled on the Eventide H949, for this build, on the same routing: your voice,
-another external sound, the drums or a synth engine pitch-shifted into up to three harmony voices.
+**Want a harmoniser too?** [Mewcoder + Harmoniser](https://github.com/MiloMeowzers/sloop-smk37/tree/harmoniser) is
+this build with one modelled on the Eventide H949: your voice, the drums or a synth pitch-shifted into up to three
+harmony voices, on the same routing.
 
 Branch `mewcoder` · release [`mewcoder-v0.1`](https://github.com/MiloMeowzers/sloop-smk37/releases/tag/mewcoder-v0.1) ·
 how it was built: [VOCODER-DESIGN.md](/VOCODER-DESIGN.md) · GPL-3.0-only

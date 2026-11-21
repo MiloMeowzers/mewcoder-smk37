@@ -956,7 +956,8 @@ UI_SMALL static void pg2_screen(void)
             f = TE_COL[q], tc = C_BLACK;                           /* KNOBS SET: this track */
         else if (row && grp && ((br_mute >> q) & 1u))
             f = TE_RED, tc = C_WHITE;                              /* MUTE */
-        sig = (uint32_t)f * 65537u + tc + 1u;
+        sig = (uint32_t)f * 65537u + tc + 2u;       /* (never 0, the "not drawn" mark: + 1 made white on black 0, so a
+                                                     * REPEAT cell repeating as the page opened stayed black) */
         if (sig == sig_c[i])
             continue;
         sig_c[i] = sig;
