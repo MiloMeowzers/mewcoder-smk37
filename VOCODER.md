@@ -10,7 +10,7 @@ in SLOOP stays: the four tracks, the sequencer, the punch-ins, the multichannel 
 
 | | |
 |---|---|
-| **Base** | SLOOP 2.8.4, with all the Multichannel USB audio build adds: punch-in effects on every channel, the punch-in page on the pads and its page 2 (the stems punched, BEAT REPEAT), sequencer effects (FLIP, LOOP BACK, RAMP), DAW mode, STEM LEVEL ([SMK37.md](SMK37.md#page-2-the-stems-punched-and-beat-repeat)) |
+| **Base** | SLOOP 2.8.4, with all the Multichannel USB audio build adds: punch-in effects on every channel, the punch-in page on the pads, Selectable Punch In Effects (the stems punched, BEAT REPEAT), sequencer effects (FLIP, LOOP BACK, RAMP), DAW mode, STEM LEVEL ([SMK37.md](SMK37.md#selectable-punch-in-effects-the-stems-punched-and-beat-repeat)) |
 | **Keyboard** | SMK-37 Elite only |
 | **Tracks** | T1 and T2 (synths); **T3** the audio track (INPUT > AUDIO IN: ON: the input dry or vocoded) or a synth (AUDIO IN: OFF); the drums |
 | **Input level** | HOME > INPUT: **TRIM L**, **TRIM R** (−18 .. +6 dB) with a meter each. Section 2.6 |
