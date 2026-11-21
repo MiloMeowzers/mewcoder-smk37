@@ -27,7 +27,7 @@ All of SLOOP 2.8.4 (four tracks, the sequencer, the 27 punch-in effects, the web
 | **USB audio stems** | six mono channels, 24 bit, to the DAW: drums in four groups, the synths, the reverb / delay return; 48 or 44.1 kHz; a layout change re-plugs USB by itself; STEM LEVEL −18 / −12 / −6 dB | [USB audio stems](#usb-audio-stems) |
 | **Punch-ins on the stems** | STEM FX: the rhythmic punch-ins (loops, stutter, reverse, stop, half, rewind, gate) on every stem, seamless loop joins, settable stitches (HOME > PUNCH: FADE, XFADE, CURVE) | [STEM FX](#usb-audio-stems) |
 | **The stem punch-in page** | FX held (or locked with FX + FADER BANK): the pads as four colour rows, rows 1-3 the stem punch-ins, FREEZE | [the page](#the-stem-punch-in-page) |
-| **Punch page 2, BEAT REPEAT** | < or > on the punch page: which stems the punch acts on, and BEAT REPEAT per track (a sequencer effect modelled on Ableton's Beat Repeat), latched, with MUTE and WET / DRY | [Page 2](#page-2-the-stems-punched-and-beat-repeat) |
+| **Selectable Punch In Effects, BEAT REPEAT** | < or > on the punch page: which stems the punch acts on, and BEAT REPEAT per track (a sequencer effect modelled on Ableton's Beat Repeat), latched, with MUTE and WET / DRY | [Page 2](#selectable-punch-in-effects-the-stems-punched-and-beat-repeat) |
 | **Sequencer effects** | row 4 of the page: FLIP (backwards), LOOP BACK (2 bars .. 1/16, changeable while held), RAMP UP / DOWN (tempo ramps; the DAW stays the clock master); recorded and replayed as MIDI | [Sequencer effects](#sequencer-effects-row-4) |
 | **DAW mode** | < + >: the whole keyboard as a MIDI controller, with an editable CC map | [DAW mode](#daw-mode) |
 | **The cats** | dancing cats at power-on (any key, pad or button skips them), on HOME > ABOUT with the build's name and version, and as a screensaver (LIGHTS > SCREENSAVER) | [HOME menu](#home-menu-the-smk-37-settings) |
@@ -187,7 +187,7 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | PUNCH | FADE | K6 | the punch-ins' fade in and out, 0 (default, the shortest) .. 15: the same setting as SELECT on the FX page (shown large at its top right). OCT+ back to 0 |
 | PUNCH | XFADE | K7 | with STEM FX: the shortest stitch on the stems (a punch in or out), 1.5 / 2.9 (default) / 5.8 MS; FADE makes it longer. At once |
 | PUNCH | CURVE | K8 | with STEM FX: EQUAL (default; the level holds through a stitch between unrelated audio) or LINEAR (the old ramp, ~3 dB down half way). A fresh loop's punch-in (the same audio both sides) stays linear. At once |
-| PUNCH 2 | TRIPLETS | K5 | [BEAT REPEAT](#page-2-the-stems-punched-and-beat-repeat)'s GRID with the triplets 1/6, 1/12, 1/24, 1/48: **ON** (default) / OFF (1/4, 1/8, 1/16, 1/32, 1/64 only; Ableton's NO TRIPLETS). Kept |
+| PUNCH 2 | TRIPLETS | K5 | [BEAT REPEAT](#selectable-punch-in-effects-the-stems-punched-and-beat-repeat)'s GRID with the triplets 1/6, 1/12, 1/24, 1/48: **ON** (default) / OFF (1/4, 1/8, 1/16, 1/32, 1/64 only; Ableton's NO TRIPLETS). Kept |
 | PUNCH 2 | VARIATION | K6 | BEAT REPEAT: each repeat's GRID chosen at random around the set one, 0 (default: a fixed grid) .. 10. Kept |
 | SEQ | FLIP RETURN | K7 | the stem page's FLIP and LOOP BACK, let go: SLIP (default; the tracks come back where they would have been) or CARRY (they go on from where the effect left them). At once |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
@@ -281,13 +281,13 @@ In detail:
 - **FX + FADER BANK** locks the FX layer open (FADER BANK lit): no holding FX. FADER BANK again, or any other button but
   PLAY, REC and OCT, lets it go. (SLOOP's own lock, FX held + PATCH tapped, works too.)
 
-### Page 2: the stems punched and BEAT REPEAT
+### Selectable Punch In Effects: the stems punched and BEAT REPEAT
 
-On the punch page (FX held or locked), tap **<** or **>**: page 2. It latches (the FX layer stays open: let go of FX);
+On the punch page (FX held or locked), tap **<** or **>**: **Selectable Punch In Effects**. It latches (the FX layer stays open: let go of FX);
 < or > again turns back to the punch page. It works in every USB LAYOUT. The main punch page stays the performance
-page; page 2 is for setting up and leaving.
+page; Selectable Punch In Effects is for setting up and leaving.
 
-![Punch page 2: T1 repeating and T3 muted, the knobs on T1; the knobs on T2; HOME > PUNCH 2](assets/screens/smk37-punch-page2.png)
+![Selectable Punch In Effects: T1 repeating and T3 muted, the knobs on T1; the knobs on T2; HOME > PUNCH 2](assets/screens/smk37-punch-page2.png)
 
 | Pads | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|

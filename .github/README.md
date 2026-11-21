@@ -27,9 +27,9 @@ its own, and the vocoder runs at **44.1 kHz (HQ)**. [How it all works](/VOCODER.
 
 ## New in this release
 
-- **Punch page 2** (< or > on the punch page): choose which stems the punch-ins act on, and **BEAT REPEAT** per track,
+- **Selectable Punch In Effects** (< or > on the punch page): choose which stems the punch-ins act on, and **BEAT REPEAT** per track,
   a sequencer effect modelled on Ableton's Beat Repeat: latched, with MUTE and WET / DRY, its eight settings on the
-  knobs. [How it works](/SMK37.md#page-2-the-stems-punched-and-beat-repeat).
+  knobs. [How it works](/SMK37.md#selectable-punch-in-effects-the-stems-punched-and-beat-repeat).
 - **Smoother envelopes** on every band: a fuller, steadier vocoder sound, built in.
 - **QUALITY > FULL HQ**: the 44.1 kHz synthesis in FULL too (off by default while it is compared).
 - **POLY CAP AUTO** (the default): FM6, the costliest engine, capped at 4 voices while the vocoder runs.
@@ -38,7 +38,7 @@ its own, and the vocoder runs at **44.1 kHz (HQ)**. [How it all works](/VOCODER.
   under INPUT.
 - **The cats**: dancing at power-on, on HOME > ABOUT, and as a screensaver (LIGHTS > SCREENSAVER).
 
-![Punch page 2: T1 repeating and T3 muted; the knobs on T2; HOME > PUNCH 2](/assets/screens/smk37-punch-page2.png)
+![Selectable Punch In Effects: T1 repeating and T3 muted; the knobs on T2; HOME > PUNCH 2](/assets/screens/smk37-punch-page2.png)
 
 ## What you get
 
