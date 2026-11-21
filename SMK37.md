@@ -100,10 +100,32 @@ update mode (UBOOT).
 | KNOB 3 | dial 3 on screen (yellow) | K7 | dial 3 |
 | KNOB 4 | dial 4 on screen (orange) | K8 | dial 4 |
 | — | — | KNOB LAYOUT = SMK | HOME menu > SCREEN > KNOB LAYOUT (K7): K1–K4 the dials 1–4, K5 master volume, K6 SELECT, K7 PRESETS, K8 ALGORITHM (track); FM-1 (default) as above |
-| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass; open across ±6 steps of the centre), C reverb, D delay (the harmoniser build with HARMONY on: also E HARM: PITCH, FEEDBACK, VOICE IN, LANE RATE; F LANE: each track's dry / harmony MIX; G IN: each lane's input level with a meter, [HARMONISER.md A4](HARMONISER.md#a4-the-faders-banks-e-and-f-and-pickup)). **Bank A's law** (since Mewcoder v0.2 and Mewcoder + Harmoniser v0.2-pre): in dB, the bottom off, then −40 dB rising evenly to 0 dB at the fader's 100, and up to +2 dB over the rest of its travel; the drums' fader the same in dB (a project's values, MIDI and the encoders are not changed by it). Moving any fader brings up the FADER BANK screen (tap FADER BANK to close it; < > or SELECT step the banks while it is up). **PICKUP:** after a bank change a fader acts only once it reaches the value the bank holds (within 3 steps, or passing through it either way), so nothing jumps; until then the FADER BANK screen shows it waiting, with an arrow the way to go |
+| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: [the fader banks](#the-fader-banks) |
 | — (no wheels used by SLOOP) | — | PITCH wheel | pitch bend, selected synth track: HOME menu > PLAY > BEND UP (K6) / BEND DOWN (K7), OFF, 1, 2, 3, 4, 5, 7, 12 semitones each; default 7 / 7 |
 | — | — | MOD wheel | vibrato 10 Hz, up to ±1 semitone (up = more) |
 | — | — | PEDAL jack | — |
+
+### The fader banks
+
+**FADER BANK** steps the banks (A, B, C, D; with HARMONY on in Mewcoder + Harmoniser also E, F, G). Moving any fader
+brings up the FADER BANK screen: each fader's track, value and state. Tap FADER BANK to close it; **<** **>** or
+SELECT step the banks while it is up.
+
+| Bank (screen) | F1 | F2 | F3 | F4 | What it sets |
+|---|---|---|---|---|---|
+| **A** LEVEL | T1 | T2 | T3 | DRUMS | each track's level. **The law** (since Mewcoder v0.2 / Mewcoder + Harmoniser v0.2-pre): in dB, the bottom off, then −40 dB rising evenly to **0 dB at the fader's 100**, and up to +2 dB over the rest of the travel, so the useful range is spread over the whole fader; the drums' fader the same in dB. The screen shows the tracks' level in dB, the drums' as a number (100 = 0 dB). A project's values, MIDI and the encoders are not changed by it |
+| **B** FILTER | T1 | T2 | T3 | DRUMS | each track's filter: low-pass to the left, open in the middle (±6 steps of the centre, easy to leave open), high-pass to the right. Mewcoder: track 3 vocoding shows **T3 CUTOFF**, the carrier saws' low-pass. HARMONY on: T1 has none |
+| **C** REVERB | T1 | T2 | T3 | DRUMS | each track's reverb send (after its level) |
+| **D** DELAY | T1 | T2 | T3 | DRUMS | each track's delay send (after its level). HARMONY on: T1 has none |
+| **E** HARM | PITCH | FEEDBACK | VOICE IN | LANE RATE | the harmoniser's live controls: PITCH every voice together, two octaves down to one up, 1:1 in the middle (a dead zone holds it), in semitones; FEEDBACK the harmony fed back, cascades that always die away; VOICE IN the audio in's level into it (79 % = 0 dB); LANE RATE every lane 44.1K (the bottom half) or 22K (the top half), dim and MIXED while the lanes are set apart in the menu. [HARMONISER.md A4](HARMONISER.md#a4-the-faders-banks-e-and-f-and-pickup) |
+| **F** LANE | T1 | T2 | T3 | DRUMS | each track's **MIX**: 0 the dry alone, 100 the harmony alone, a crossfade between (the track keeps its level). On T2, T3 and the drums 0 also turns the lane off (no CPU); T1's is your voice against its harmony (the HARMONY page's MIX) |
+| **G** IN | VOICE IN | T2 | T3 | DRUMS | each lane's **input level** before the harmoniser (LANE IN, 0.5 dB a step, 0 dB as before, up to +7.5 dB; F1 is VOICE IN, bank E's F3), with a **meter** under each fader: green, amber from −6 dB, red from +4 dB, a red tick while the lane's limiter acts. [HARMONISER.md A4](HARMONISER.md#a4-the-faders-banks-e-and-f-and-pickup) |
+
+- **PICKUP** (every bank): after a bank change a fader does nothing until it reaches the value the bank holds (within
+  3 steps, or passing through it either way), then takes over without a jump. Its box at the left shows it: filled in
+  the track's colour, live; outlined with an arrow, waiting (the arrow is the way to move); dim, nothing to set. The
+  bar is the bank's value, the white tick where the fader is.
+- The banks' values are the project's (saved with it); E, F and G with the harmoniser's settings.
 
 ## Buttons
 
