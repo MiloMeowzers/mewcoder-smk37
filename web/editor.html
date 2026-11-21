@@ -3205,7 +3205,8 @@ function makeMockDevice(opt = {}) {
     /* SLOOP 2.6 (after Felucca 1.4 / 1.5): INSERT, ANALOG's filter TYPE, ENV SYNC, LFO 2 */
     E("INSRT", ["OFF", "SOFT", "HARD", "FOLD", "FUZZ", "CRUSH", "PHASR", "FLANG", "CHOR"], 0),
     D("INS A", F.PCT, 0, 127, 64), D("INS B", F.PCT, 0, 127, 96), D("INS C", F.PCT, 0, 127, 96), D("MIX", F.PCT, 0, 127, 127),
-    E("TYPE", ["LP", "BP", "HP"], 0), E("ESYNC", NONOFF, 0),
+    E("TYPE", opt.voc ? ["LP", "BP", "HP", "CEM", "LADDER"] : ["LP", "BP", "HP"], 0), E("ESYNC", NONOFF, 0),   /* (the vocoder
+                                                       builds: CEM, LADDER, params.c N_FTYPE with smk_cem.h) */
     E("SYNC", ["OFF", "4BAR", "2BAR", "1BAR", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"], 0),
     E("TRIG", ["NOTE", "FREE"], 0), E("POL", ["BI", "UNI"], 0),
   ];
@@ -3426,11 +3427,12 @@ function makeMockDevice(opt = {}) {
     daw: { on: 0, ch: 1, local: 0, user: 0, rel: 0, map: DAW.defaults() },   /* SMK-37 (opt.daw): DAW mode */
     smkset: Uint8Array.from({ length: 60 }, (_, i) => [0x53, 0x4B, 0x53, 0x54, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1][i] || 0),   /* project.c smkset_t (60 bytes since 2026-11-20: 0 = the defaults) */
     vocset: (() => {                                   /* project.c vocset_t, the defaults (opt.voc) */
-      const v = new Uint8Array(536);                  /* (536 bytes since LANE IN: both vocoder builds since the merge) */
+      const v = new Uint8Array(564);                  /* (564 bytes since the filter build: FILTER, TRACK FILTER, RING) */
       v.set([6, 6, 6], 512);                          /* POLY CAP T1 .. T3: AUTO (FM6 at 4) */
       v.set([0x56, 0x4F, 0x43, 0x53, 0, 4, 0, 7, 127, 0, 0, 0, 0, 2, 1, 0], 0);
       if (opt.harm === "on") v[478] = 1;              /* (?harm=on: HARMONY on) */
       v[476] = 1;                                     /* (mixv: DRY / HF on the 12-step scale) */
+      v[477] = 2, v[539] = 1;                         /* (FULL HQ on, the filter build's default; fmark: saved by it) */
       if (opt.harm) {
         v.set([100, 100, 100], 483);                  /* the HARMONY page (hset_t at 480): LEVEL V1 .. V3 */
         v.set([1, 41, 12, 12], 490);                  /* .. KEYS & MIDI, INPUT LEVEL 0 dB, the EQ flat */
@@ -3876,7 +3878,7 @@ function makeMockDevice(opt = {}) {
             }
             else if (id === 0) { const o = js(); st.tracks = o.tracks; st.sel = o.sel; st.g = o.g; }
             else if (id >= 12 && id <= 14) {                /* SMK-37 (editor.c: stopped only; 13 taken, not modelled) */
-              if (id !== 13 && (id === 12 ? P.len !== 20 && P.len !== 60 : P.len !== 480 && P.len !== 512 && P.len !== 532 && P.len !== 536)) throw 0;   /* (532: POLY CAP) */
+              if (id !== 13 && (id === 12 ? P.len !== 20 && P.len !== 60 : P.len !== 480 && P.len !== 512 && P.len !== 532 && P.len !== 536 && P.len !== 564)) throw 0;   /* (532: POLY CAP, 564: the filter build) */
               if (st.playing) rc = 3;
               else if (id === 12) st.smkset = P.buf.slice();
               else if (id === 14) st.vocset = P.buf.slice();
@@ -6576,8 +6578,8 @@ function renderTrackbar() {
   for (const b of box.children) {
     const i = +b.dataset.i, x = dev.mix && dev.mix.tracks[i];
     b.setAttribute("aria-pressed", i === (dev.sel || 0) ? "true" : "false");
-    const hon = harmOn();                            /* (HARMONY on: T1 the harmoniser, T3 an audio track, no vocoder) */
-    const nm = i === 0 && hon ? ["HARMONY", "harmoniser"] : i === 2 && hon ? ["AUDIO", "audio in"]
+    const hon = harmOn(), ext = extAudio(i);         /* (HARMONY on: T1 the harmoniser, T3 an audio track, no vocoder) */
+    const nm = i === 0 && hon ? ["HARMONY", "harmoniser"] : ext ? [ext, "audio in"] : i === 2 && hon ? ["AUDIO", "audio in"]
       : i === 2 && dev.info.build & 2 ? ["VOCODER", "audio in"]   /* (the vocoder build's T3: its own patch) */
       : !x ? [i === ntrk - 1 ? "DRUMS" : "", ""] : x.engine >= dev.info.nengines ? [(dev.kitNames || [])[x.e0 - (dev.kitMin || 0)] || "", "drums"]
       : [(dev.names[x.engine] || [])[x.preset] || "", String(dev.info.engines[x.engine] || "").toLowerCase()];
@@ -6586,6 +6588,14 @@ function renderTrackbar() {
   }
   document.documentElement.style.setProperty("--trk", TCOL[(dev.sel || 0) % 4]);
   renderPreview();
+}
+/* the filter build (cem-filter-spec.md §6): T1 / T2 playing an input (IN L / IN R routed to it, AUDIO IN on; T1 not under
+   HARMONY): "EXT AUDIO L / R / LR", as the device names it (voice.c voc_trk_name); from the settings read (Vocoder tab) */
+function extAudio(i) {
+  const d = dev && dev.info && dev.info.build & 2 && OB.vocoder.dev === dev && OB.vocoder.d;
+  if (!d || d.length < 564 || i > 1 || !(d[15] & 1) || (i === 0 && harmOn())) return "";
+  const l = ((d[71] >> 2) & 7) === 2 + i, r = ((d[71] >> 5) & 7) === 2 + i;
+  return l && r ? "EXT AUDIO LR" : l ? "EXT AUDIO L" : r ? "EXT AUDIO R" : "";
 }
 /* HARMONY on: the settings read (Vocoder tab), else what INFO said when connected (build bit 3) */
 function harmOn() {
@@ -7909,7 +7919,7 @@ const OB = {
     ["sqgrid", 18, "RAMP GRID", ["1/4", "1/8", "1/16", "1/4.", "1/8.", "1/16."], 0],
     ["gdel", 19, "GATE DELAY (VOCODER)", Array.from({ length: 11 }, (_, i) => [i, `${i * 5} MS`]), 0],
     ["saws", 19, "CARRIER SAWS (VOCODER)", ["AUTO", "1 SAW", "2 SAWS"], 0]] },
-  vocoder: { id: 14, len: 536, lens: [480, 512, 532, 536], magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
+  vocoder: { id: 14, len: 564, lens: [480, 512, 532, 536, 564], magic: 0x53434F56, box: "vocset", dev: null, d: null, dirty: false, fields: [
     ["uin", 15, "AUDIO IN", ["OFF", "ON"], 0],
     ["vsetup", 71, "SETUP", ["FULL", "VOC + DRUMS", "VOC + SYNTH", "VOC ALONE"], 0],
     ["vinl", 71, "IN L", ["TRACK 3", "CARRIER", "T1", "T2", "OFF", "HARMONY"], 0],
@@ -7932,11 +7942,20 @@ const OB = {
     ["eatt", 472, "ATTACK", ["3 MS", "5 MS", "8 MS", "12 MS", "20 MS", "30 MS"], 0],
     ["erel", 473, "RELEASE", ["8 MS", "15 MS", "25 MS", "40 MS", "60 MS", "100 MS"], 0],
     ["brmode", 477, "BRIDGE MODE", ["FIXED", "FOLLOW"], 0],
-    ["fhq", 477, "FULL HQ (QUALITY)", ["OFF", "HQ"], 0],
+    ["fhq", 477, "FULL HQ (QUALITY)", ["OFF", "HQ"], 1],
     ["spair", 511, "STEREO PAIR (USB, SYNTHS+RET)", ["RET", "DRUMS", "T1", "T2", "T3"], 0],
     ["pc0", 512, "POLY CAP: T1", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6],   /* (AUTO: 4 on FM6, else none) */
     ["pc1", 513, "POLY CAP: T2", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6],
-    ["pc2", 514, "POLY CAP: T3", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6]],
+    ["pc2", 514, "POLY CAP: T3", ["OFF", "1", "2", "3", "4", "5", "AUTO"], 6],
+    /* the filter build (cem-filter-spec.md: smk_cem.h): HOME > FILTER (WARMTH, DRIFT kept ^ their defaults: 0 = 36, 50),
+       TRACK FILTER, FADER BANK RING (now; each slot's too, not shown) */
+    ["fslope", 536, "FILTER SLOPE (CEM / LADDER)", ["24 DB", "12 DB"], 0],
+    ["fwarm", 537, "FILTER WARMTH", Array.from({ length: 101 }, (_, i) => [i ^ 36, String(i)]), 0],
+    ["fdrift", 538, "FILTER DRIFT", Array.from({ length: 101 }, (_, i) => [i ^ 50, i ? String(i) : "OFF"]), 0],
+    ["ft0", 540, "TRACK FILTER: T1", ["SVF", "CEM", "LADDER"], 0], ["ft1", 541, "TRACK FILTER: T2", ["SVF", "CEM", "LADDER"], 0],
+    ["ft2", 542, "TRACK FILTER: T3", ["SVF", "CEM", "LADDER"], 0], ["ft3", 543, "TRACK FILTER: DRUMS", ["SVF", "CEM", "LADDER"], 0],
+    ["ring0", 544, "RING: T1 (LAST FADER BANK)", OB_PCT, 0], ["ring1", 545, "RING: T2", OB_PCT, 0],
+    ["ring2", 546, "RING: T3", OB_PCT, 0]],
   harm: [                                              /* the harmoniser (HOME > HARMONY, the load settings, the HARMONY
                                                           page, FADER BANK E / F: smk_harm.h, project.c vocset_t) */
     ["hon", 478, "HARMONY", ["OFF", "ON: T1"], 0],

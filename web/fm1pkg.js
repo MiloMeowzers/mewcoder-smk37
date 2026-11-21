@@ -141,10 +141,10 @@ export async function identifyStockPackage(bytes) {
   try { product = productOf(bytes); image = logicalImage(bytes); }
   catch (_) { throw badPackage("unknown", "not an M-Vave firmware package for the SMK-37 range"); }
   const k = STOCK_SMK.find((x) => x.size === bytes.length && x.sha256 === sha);
-  const m = /^(.+)_(\d{3})$/.exec(product);
+  const m = /^(.+)_(\d{3}|937\d{4})$/.exec(product);   /* (937xxxx: the vocoder builds' own, tools/build.py VOC_IDENT) */
   if (/^FM-1(_|$)/i.test(product))
     throw badPackage("fm1", "this is an FM-1 firmware: it is for the FM-1, not for an SMK-37 keyboard");
-  if (m && /^[789]\d\d$/.test(m[2]) && (STOCK_MODELS[m[1].toUpperCase()] || /^SMK-37/i.test(m[1])))
+  if (m && /^([789]\d\d|937\d{4})$/.test(m[2]) && (STOCK_MODELS[m[1].toUpperCase()] || /^SMK-37/i.test(m[1])))
     throw badPackage("ours", "this is one of our firmwares (" + product + "): install it above, not here");
   const known = k && k.product.startsWith(product), name = m && STOCK_MODELS[m[1].toUpperCase()];
   if (!known && (!name || Number(m[2]) > 99)) throw badPackage("unknown", "not an M-Vave firmware package for the SMK-37 range");

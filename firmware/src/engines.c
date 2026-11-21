@@ -2,6 +2,11 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Engine table: order = PRESETS browsing order (and the engine numbers of the editor protocol). */
 #include "dsp.c"
+#if BOARD_SMK37 && SMK_UAC_IN_PROBE && !SMK_UAC_PROBE
+#include "smk_cem.h"            /* SMK-37, the vocoder builds: the CEM / LADDER filter, RING (cem-filter-spec.md) */
+#else
+#define SMK_CEM 0
+#endif
 /* SLOOP 2.5: the big per-part state of GRAIN, FM6 and PHYS shares one arena per synth part (a part plays one
  * engine at a time: on a switch the old engine fades out, its voices end, then the new one starts, voice.c
  * engine_block). The first engine to ask for it after another one gets it cleared, as at power-on. */

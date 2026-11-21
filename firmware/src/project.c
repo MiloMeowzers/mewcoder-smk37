@@ -1041,6 +1041,13 @@ typedef struct {
     uint8_t pcsec[4][4];                 /* .. each project slot's (saved with it, applied when it loads) */
     uint8_t lin[4];                      /* LANE IN T2, T3, DRUMS (harmoniser-spec.md §14; ^ HM_LIN_0: 0 = 0 dB), a spare
                                           * (an object of 532 bytes, before them: 0 dB) */
+    uint8_t fslope, fwarm, fdrift, fmark;   /* HOME > FILTER (the filter build, cem-filter-spec.md: smk_cem.h): SLOPE, WARMTH
+                                          * ^ CEM_WARM_DEF, DRIFT ^ CEM_DRIFT_DEF (an object of 536 bytes, before them:
+                                          * the defaults); fmark bit 0: saved by the filter build (else FULL HQ loads ON,
+                                          * its new default), bit 4 + k: slot k's RING below */
+    uint8_t ftype[4];                    /* HOME > TRACK FILTER: T1, T2, T3, DRUMS (0 SVF, as before) */
+    uint8_t ring[4];                     /* FADER BANK RING: T1 .. T3 now, a spare */
+    uint8_t ringsec[4][4];               /* .. each project slot's (saved with it, applied when it loads; none: off) */
 } vocset_t;
 #define VOCSET_V1 64u                    /* (the object's size before BRIDGE TONE) */
 #define VOCSET_V2 68u                    /* (.. before NORMAL) */
@@ -1050,6 +1057,7 @@ typedef struct {
 #define VOCSET_V6 480u                   /* (.. before the HARMONY page) */
 #define VOCSET_V7 512u                   /* (.. before POLY CAP) */
 #define VOCSET_V8 532u                   /* (.. before LANE IN) */
+#define VOCSET_V9 536u                   /* (.. before the filter build's) */
 #if SMK_HARM_BUILD
 #define VOCSET_HSET_SZ sizeof(hset_t)
 #define VOCV_MODE() (hm_on ? hm_vmode : voc_mode)   /* (HARMONY on: the mode set aside, not AUDIO's lock) */
@@ -1058,7 +1066,8 @@ typedef struct {
 #define VOCSET_HSET_SZ 22u
 #define VOCV_MODE() voc_mode
 #endif
-_Static_assert(sizeof(vocset_t) == VOCSET_V8 + 4u && VOCSET_V8 == VOCSET_V7 + 20u && __builtin_offsetof(vocset_t, pcap) == VOCSET_V7 &&
+_Static_assert(sizeof(vocset_t) == VOCSET_V9 + 28u && VOCSET_V9 == VOCSET_V8 + 4u && __builtin_offsetof(vocset_t, fslope) == VOCSET_V9 &&
+               VOCSET_V8 == VOCSET_V7 + 20u && __builtin_offsetof(vocset_t, pcap) == VOCSET_V7 &&
                __builtin_offsetof(vocset_t, hset) == VOCSET_V6 &&
                VOCSET_HSET_SZ == sizeof(((vocset_t *)0)->hset), "vocset: the HARMONY page after the 480 bytes");
 _Static_assert(VOCSET_V6 == VOCSET_V5 + 4u && VOCSET_V5 == VOCSET_V4 + 4u && VOCSET_V4 == VOCSET_V3 + 5u * 80u && sizeof(vocpg_t) == 80u &&
@@ -1111,6 +1120,11 @@ static void vocset_cap(const project_t *p)
         vocset.psec[k].have = 1;
         memcpy(vocset.pcsec[k], hm_pcap, sizeof hm_pcap);   /* (POLY CAP with the project, §13w-2) */
         vocset.pchave |= (uint8_t)(1u << k);
+#if SMK_CEM
+        for (uint32_t j = 0; j < 3u; j++)              /* (RING with the project, cem-filter-spec.md §5c) */
+            vocset.ringsec[k][j] = (uint8_t)(smk_ring[j] & 127);
+        vocset.fmark |= (uint8_t)(16u << k);
+#endif
     }
 }
 static void vocset_load(const project_t *p)
@@ -1125,11 +1139,19 @@ static void vocset_load(const project_t *p)
         for (j = 0; j < 3u; j++)
             hm_pcap[j] = (uint8_t)(vocset.pcsec[k][j] > HM_PCAP_AUTO ? HM_PCAP_AUTO : vocset.pcsec[k][j]);
     }
+#if SMK_CEM
+    if (p >= proj_slot && k < 4u) {                     /* RING: the slot's, or off (saved before it: as it was) */
+        uint32_t j, h = (vocset.fmark >> (4u + k)) & 1u;
+        for (j = 0; j < 3u; j++)
+            smk_ring[j] = (int16_t)(h ? vocset.ringsec[k][j] & 127u : 0u);
+    }
+#endif
 }
 static void vocset_drop(uint32_t slot)
 {
     vocset.sec[slot & 3u].have = 0, vocset.psec[slot & 3u].have = 0;
     vocset.pchave &= (uint8_t)~(1u << (slot & 3u));
+    vocset.fmark &= (uint8_t)~(16u << (slot & 3u));
 }
 /* an object of n bytes (as read from flash, or the editor's restore, backup object 14): 1 taken (the settings, the page
  * and each slot's set from it), 0 not one (nothing changes) */
@@ -1137,7 +1159,7 @@ static int vocset_take(const uint8_t *b, uint32_t n)
 {
     static vocset_t s;                                 /* (472 bytes: not on the stack) */
     uint32_t k;
-    if (n != sizeof s && n != VOCSET_V8 && n != VOCSET_V7 && n != VOCSET_V6 && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 &&
+    if (n != sizeof s && n != VOCSET_V9 && n != VOCSET_V8 && n != VOCSET_V7 && n != VOCSET_V6 && n != VOCSET_V5 && n != VOCSET_V4 && n != VOCSET_V3 &&
         n != VOCSET_V2 && n != VOCSET_V1)
         return 0;
     memset(&s, 0, sizeof s);                           /* (an older, shorter object: the rest none / OFF) */
@@ -1164,6 +1186,17 @@ static int vocset_take(const uint8_t *b, uint32_t n)
         voc_eatt = (uint8_t)(s.eatt % VOC_EATT_N), voc_erel = (uint8_t)(s.erel % VOC_EREL_N);   /* (older: 0, 0) */
         voc_brmode = (uint8_t)(s.brmode & 1u);         /* (older: FIXED) */
         voc_fullhq = (uint8_t)((s.brmode >> 1) & 1u);  /* QUALITY > FULL HQ (older: OFF) */
+#if SMK_CEM
+        if (!(s.fmark & 1u))
+            voc_fullhq = 1;                            /* (saved before the filter build: ON, the new default) */
+        cem_slope = (uint8_t)(s.fslope & 1u);          /* HOME > FILTER, TRACK FILTER, RING (older: the defaults) */
+        cem_warm = (uint8_t)((s.fwarm ^ CEM_WARM_DEF) > 100u ? CEM_WARM_DEF : s.fwarm ^ CEM_WARM_DEF);
+        cem_drift = (uint8_t)((s.fdrift ^ CEM_DRIFT_DEF) > 100u ? CEM_DRIFT_DEF : s.fdrift ^ CEM_DRIFT_DEF);
+        for (k = 0; k < 4u; k++)
+            cem_tt[k] = (uint8_t)(s.ftype[k] % TFT_N);
+        for (k = 0; k < 3u; k++)
+            smk_ring[k] = (int16_t)(s.ring[k] & 127u);
+#endif
 #if SMK_HARM_BUILD
         hm_set(s.harm & 1u);                           /* (older: OFF; taken at the next block, fx.c hm_apply) */
         hm_int = (uint8_t)((s.harm >> 1) & 1u);         /* (older: FIXED) */
@@ -1235,6 +1268,14 @@ static void vocset_fill(void)                      /* the object as it is now (a
     vocset.trr = (uint8_t)(int8_t)((int32_t)(voc_trim[1] % VOC_TRIM_N) - (int32_t)VOC_TRIM_0);
     vocset.mixv = 1;
     vocset.brmode = (uint8_t)((voc_brmode & 1u) | (voc_fullhq & 1u) << 1);
+#if SMK_CEM
+    vocset.fslope = cem_slope & 1u, vocset.fwarm = (uint8_t)(cem_warm ^ CEM_WARM_DEF);
+    vocset.fdrift = (uint8_t)(cem_drift ^ CEM_DRIFT_DEF), vocset.fmark |= 1u;
+    for (uint32_t k = 0; k < 4u; k++)
+        vocset.ftype[k] = (uint8_t)(cem_tt[k] % TFT_N);
+    for (uint32_t k = 0; k < 3u; k++)
+        vocset.ring[k] = (uint8_t)(smk_ring[k] & 127);
+#endif
 #if SMK_HARM_BUILD
     vocset.harm = (uint8_t)((hm_want & 1u) | (hm_int & 1u) << 1 | ((hm_thin ^ HM_THIN_DEF) & 15u) << 2);   /* (as
                                                      * asked: the block's start may not have taken it yet) */

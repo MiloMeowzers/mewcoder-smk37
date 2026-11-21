@@ -25,10 +25,21 @@ static uint8_t fb_pin;                             /* (2026-11-12, the owner: "a
 static uint8_t smk_fpos[4], smk_flive;
 #define SMK_FB_STATE 1                             /* (ui_fbank.c: these are here; a test of it alone declares its own) */
 /* the banks: A .. D, and E (HARM) and F (SENDS) while HARMONY is on */
-#if SMK_UAC_IN_PROBE && SMK_HARM_BUILD
+#if SMK_UAC_IN_PROBE && SMK_HARM_BUILD && SMK_CEM
+#define FB_N ((hm_on || hm_want) ? 8u : 5u)     /* (HARMONY: E HARM, F SENDS, G LANE IN; as asked, before the block takes it;
+                                                 * RING the last: E, or H with HARMONY, cem-filter-spec.md §5d) */
+#elif SMK_UAC_IN_PROBE && SMK_HARM_BUILD
 #define FB_N ((hm_on || hm_want) ? 7u : 4u)     /* (HARMONY: E HARM, F SENDS, G LANE IN; as asked, before the block takes it) */
+#elif SMK_CEM
+#define FB_N 5u                                 /* (Mewcoder: E RING) */
 #else
 #define FB_N 4u
+#endif
+#if SMK_CEM
+#define FB_RING 7u                              /* (what a bank is: RING whichever letter it has; the others their place) */
+#define FB_KIND(b) ((b) % FB_N == FB_N - 1u ? FB_RING : (b) % FB_N)
+#else
+#define FB_KIND(b) ((b) % FB_N)
 #endif
 static uint8_t pad_steps;                          /* the pads on the PLAY layer: 0 DRUM KIT (the default), 1 STEPS;
                                                     * KNOB BANK + FADER BANK (smk_input.h, seq.c pad_drum); not kept */

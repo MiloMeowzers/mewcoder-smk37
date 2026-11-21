@@ -39,6 +39,25 @@ static void __attribute__((noinline)) voc_ext_carrier(int32_t *out, uint32_t n)
     voc_xgate = a;
     voc_xheld = 0;
 }
+#if SMK_CEM
+/* RING on a track playing an input (FADER BANK RING; cem-filter-spec.md §2.2): the channel x a sine at the track's last
+ * note (keys, sequencer: voice.c trk_note_on), crossfaded in (0: off); none until a note is played */
+static uint8_t ring_note[4], ring_have;
+static uint32_t ring_ph[4];
+static void __attribute__((noinline)) ring_input(uint32_t k, int32_t *out, uint32_t n)
+{
+    int32_t a = smk_ring[k & 3u] * 258;
+    uint32_t i, ph, inc;
+    if (!a || !((ring_have >> k) & 1u))
+        return;
+    ph = ring_ph[k & 3u], inc = pitch_inc((uint32_t)ring_note[k & 3u] * 16u);
+    for (i = 0; i < n; i++, ph += inc) {
+        int32_t x = out[i], r = (int32_t)(((int64_t)x * sine_i(ph)) >> 15);
+        out[i] = x + (int32_t)(((int64_t)(r - x) * a) >> 15);
+    }
+    ring_ph[k & 3u] = ph;
+}
+#endif
 /* T1 / T2 playing an input (VOC_TRK_IN): the channel, dry, faded in and out (~5 ms) as the route or the SETUP changes */
 static void __attribute__((noinline)) voc_tin_block(uint32_t k, int32_t *out, uint32_t n)
 {
@@ -50,18 +69,37 @@ static void __attribute__((noinline)) voc_tin_block(uint32_t k, int32_t *out, ui
         out[i] = (int32_t)(((int64_t)VOC_VS(x[i]) * g) >> 15);
     }
     voc_tin_g[k & 1u] = g;
+#if SMK_CEM
+    ring_input(k & 1u, out, n);
+#endif
 }
+#if SMK_CEM
+/* the filter build (cem-filter-spec.md §5): track 3's ENV > FLT and LFO > FLT move its FILTER on the vocoder's output
+ * (fx.c tflt_off), the newest sounding voice's; the carrier's own low-pass (CARRIER > CUTOFF, RESO: the menu's) is left
+ * out while it is open (127, no RESO: today's "open" rolled off a little near 16 kHz) */
+static int32_t voc_ocut;
+static uint32_t voc_oage;
+#define VOC_OCUT(v, m) (((v)->age >= voc_oage) ? (void)(voc_oage = (v)->age, voc_ocut = (m)->cutoff) : (void)0)
+#define VOC_CCUT(m) ((int32_t)voc_cut << 8)
+#define VOC_COPEN (voc_cut >= 127u && !voc_res)
+#else
+#define VOC_OCUT(v, m) ((void)0)
+#define VOC_CCUT(m) (((int32_t)voc_cut << 8) + (m)->cutoff)
+#define VOC_COPEN 0
+#endif
 /* HQ+ (SETUP VOC ALONE, 2026-11-11: "the single carrier is thin"): voc_saw with two saws, -3.4 and +3.4 cents, each at
  * half (the second's phase v->ph[1]); a function of its own, out of the hot code (voc_saw as it was for the rest) */
 static void __attribute__((noinline)) voc_saw2(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     uint32_t i1 = m->inc - (m->inc >> 9), i2 = m->inc + (m->inc >> 9), ph = v->ph[0], ph2 = v->ph[1], i;
     int32_t ic1 = v->s[0], ic2 = v->s[1], a = v->s[2];
-    int32_t tgt = v->gate ? 16384 + (int32_t)v->vel * 129 : 0;
+    int32_t tgt = v->gate ? 16384 + (int32_t)v->vel * 129 : 0, open = VOC_COPEN;
     tsvf_t f;
-    tsvf_coef(&f, ((int32_t)voc_cut << 8) + m->cutoff, voc_res);
+    VOC_OCUT(v, m);
+    tsvf_coef(&f, VOC_CCUT(m), voc_res);
     for (i = 0; i < n; i++, ph += i1, ph2 += i2) {
-        int32_t s = clamp(tsvf_lp(&f, (osc_saw(ph, i1) + osc_saw(ph2, i2)) >> 1, &ic1, &ic2), -32767, 32767);
+        int32_t s = (osc_saw(ph, i1) + osc_saw(ph2, i2)) >> 1;
+        s = open ? s : clamp(tsvf_lp(&f, s, &ic1, &ic2), -32767, 32767);
         a += (tgt - a) >> (tgt > a ? 6 : 9);
         out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
     }
@@ -78,11 +116,13 @@ static void voc_saw(voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
     /* the VOCODER patch's own envelope (2026-11-04, the owner: a carrier holds full while its key or step is held,
      * whatever the track's ADSR and level trim): ~1.5 ms up to the velocity's level, ~12 ms down when let go; a voice
      * given up (stage 4) fades as any */
-    int32_t tgt = v->gate ? 16384 + (int32_t)v->vel * 129 : 0;
+    int32_t tgt = v->gate ? 16384 + (int32_t)v->vel * 129 : 0, open = VOC_COPEN;
     tsvf_t f;
-    tsvf_coef(&f, ((int32_t)voc_cut << 8) + m->cutoff, voc_res);
+    VOC_OCUT(v, m);
+    tsvf_coef(&f, VOC_CCUT(m), voc_res);
     for (i = 0; i < n; i++, ph += m->inc) {
-        int32_t s = clamp(tsvf_lp(&f, osc_saw(ph, m->inc), &ic1, &ic2), -32767, 32767);
+        int32_t s = osc_saw(ph, m->inc);
+        s = open ? s : clamp(tsvf_lp(&f, s, &ic1, &ic2), -32767, 32767);
         a += (tgt - a) >> (tgt > a ? 6 : 9);
         out[i] += mulq15(mulq15(s, v->stage == 4u ? amp_at(m, i) : a), VOICE_FS) << 1;
     }
@@ -96,6 +136,15 @@ static const char *voc_trk_name(const track_t *t)      /* the name the UI shows 
 #ifdef SMK_HARM
     if (HM_T(t))
         return "HARMONY";                               /* (T1 the harmoniser: HOME, the tracks, the editor's names) */
+#endif
+#if SMK_CEM
+    {   /* T1 / T2 playing an input (cem-filter-spec.md §6, the owner: it "stays showing the synth"): which side */
+        uint32_t k = (uint32_t)(t - trk);
+        if (k < VOC_TRK && VOC_TRK_IN(k)) {
+            int l = VOC_ROUTE(voc_inl) == VR_T1 + k, r = VOC_ROUTE(voc_inr) == VR_T1 + k;
+            return l && r ? "EXT AUDIO LR" : l ? "EXT AUDIO L" : "EXT AUDIO R";
+        }
+    }
 #endif
     return VOC_TRK_AUDIO(t) ? (voc_mode % VM_N == VM_SAW ? "VOCODER" : "AUDIO") : 0;
 }
@@ -625,6 +674,13 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
     uint32_t any = 0, i, mode = TRK_VMODE(t);
     if (trk_silent(t))
         return;                                         /* MUTE, or another track soloed */
+#if SMK_CEM
+    {   /* a track playing an input: its note for RING's sine (ring_input) */
+        uint32_t k = (uint32_t)(t - trk);
+        if ((k < VOC_TRK && VOC_TRK_IN(k)) || (VOC_TRK_AUDIO(t) && voc_mode % VM_N != VM_SAW))
+            ring_note[k & 3u] = (uint8_t)(note & 127u), ring_have |= (uint8_t)(1u << (k & 3u));
+    }
+#endif
 #if SMK_UAC_IN_PROBE
     if (voc_skip_want >> ((uint32_t)(t - trk) & 7u) & 1u)
         return;                                         /* the SETUP has the track off (or it plays an input) */
@@ -1047,6 +1103,9 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     }
     if (vst == 1u + VM_OFF) {                           /* AUDIO IN on, MODE AUDIO: the computer's audio, dry */
         voc_dry_block(out, n);
+#if SMK_CEM
+        ring_input(VOC_TRK, out, n);                    /* (RING: T3 playing the input too) */
+#endif
         voc_fade(out, n);
         return 1u;                                      /* (the track's chain runs: its LEVEL, PAN, sends) */
     }

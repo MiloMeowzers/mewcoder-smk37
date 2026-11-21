@@ -33,6 +33,7 @@ All of SLOOP 2.8.4 (four tracks, the sequencer, the 27 punch-in effects, the web
 | **The cats** | dancing cats at power-on (any key, pad or button skips them), on HOME > ABOUT with the build's name and version, and as a screensaver (LIGHTS > SCREENSAVER) | [HOME menu](#home-menu-the-smk-37-settings) |
 | **Punch-in MIDI out** | each punch-in sends its key's note on FX CH, so a DAW records and replays a performance | [HOME menu](#home-menu-the-smk-37-settings) (FX CH) |
 | **Mewcoder (the vocoder build)** | track 3 as an audio track: your voice over USB through a 20-channel vocoder modelled on the Sennheiser VSM201, with its own page (the 20 channels on the knobs and pads) | [Mewcoder](#mewcoder-the-vocoder-build), [VOCODER.md](VOCODER.md) (the manual) |
+| **CEM and LADDER filters, RING** (Mewcoder) | a 24 dB filter in the CEM3320's manner and a ladder, saturating, self-oscillating, with WARMTH and per-voice DRIFT: ANALOG's TYPE and every track's FILTER (the vocoder's output, an input track, the drums); RING on the last fader bank | [The filters](#the-cem-and-ladder-filters-and-ring) |
 
 The HOME menu (PATCH held) has the SMK-37's own settings: [HOME menu](#home-menu-the-smk-37-settings).
 
@@ -107,25 +108,28 @@ update mode (UBOOT).
 
 ### The fader banks
 
-**FADER BANK** steps the banks (A, B, C, D; with HARMONY on in Mewcoder + Harmoniser also E, F, G). Moving any fader
+**FADER BANK** steps the banks (A, B, C, D; in Mewcoder also E RING; with HARMONY on in Mewcoder + Harmoniser E, F, G
+and H RING). Moving any fader
 brings up the FADER BANK screen: each fader's track, value and state. Tap FADER BANK to close it; **<** **>** or
 SELECT step the banks while it is up.
 
 | Bank (screen) | F1 | F2 | F3 | F4 | What it sets |
 |---|---|---|---|---|---|
 | **A** LEVEL | T1 | T2 | T3 | DRUMS | each track's level. **The law** (since Mewcoder v0.2 / Mewcoder + Harmoniser v0.2-pre): in dB, the bottom off, then −40 dB rising evenly to **0 dB at the fader's 100**, and up to +2 dB over the rest of the travel, so the useful range is spread over the whole fader; the drums' fader the same in dB. The screen shows the tracks' level in dB, the drums' as a number (100 = 0 dB). A project's values, MIDI and the encoders are not changed by it |
-| **B** FILTER | T1 | T2 | T3 | DRUMS | each track's filter: low-pass to the left, open in the middle (±6 steps of the centre, easy to leave open), high-pass to the right. Mewcoder: track 3 vocoding shows **T3 CUTOFF**, the carrier saws' low-pass. HARMONY on: T1 has none |
+| **B** FILTER | T1 | T2 | T3 | DRUMS | each track's filter: low-pass to the left, open in the middle (±6 steps of the centre, easy to leave open), high-pass to the right. Mewcoder: since the filter build, track 3 vocoding has its filter too, on the vocoder's output (before, this fader was the carrier's CUTOFF: now in the menu only); HOME > TRACK FILTER makes each SVF, CEM or LADDER. HARMONY on: T1 has none |
 | **C** REVERB | T1 | T2 | T3 | DRUMS | each track's reverb send (after its level) |
 | **D** DELAY | T1 | T2 | T3 | DRUMS | each track's delay send (after its level). HARMONY on: T1 has none |
 | **E** HARM | PITCH | FEEDBACK | VOICE IN | LANE RATE | the harmoniser's live controls: PITCH every voice together, two octaves down to one up, 1:1 in the middle (a dead zone holds it), in semitones; FEEDBACK the harmony fed back, cascades that always die away; VOICE IN the audio in's level into it (79 % = 0 dB); LANE RATE every lane 44.1K (the bottom half) or 22K (the top half), dim and MIXED while the lanes are set apart in the menu. [HARMONISER.md A4](HARMONISER.md#a4-the-faders-banks-e-and-f-and-pickup) |
 | **F** LANE | T1 | T2 | T3 | DRUMS | each track's **MIX**: 0 the dry alone, 100 the harmony alone, a crossfade between (the track keeps its level). On T2, T3 and the drums 0 also turns the lane off (no CPU); T1's is your voice against its harmony (the HARMONY page's MIX) |
 | **G** IN | VOICE IN | T2 | T3 | DRUMS | each lane's **input level** before the harmoniser (LANE IN, 0.5 dB a step, 0 dB as before, up to +7.5 dB; F1 is VOICE IN, bank E's F3), with a **meter** under each fader: green, amber from −6 dB, red from +4 dB, a red tick while the lane's limiter acts. [HARMONISER.md A4](HARMONISER.md#a4-the-faders-banks-e-and-f-and-pickup) |
+| **E** / **H** RING | T1 | T2 | T3 | — | Mewcoder: the **last** bank (E; H while HARMONY is on). Each track's **ring mod**, 0 off: on ANALOG osc 1 × osc 2 before the filter (DTN sets the interval: bells, a growl near unison), on a track playing an input that input × a sine at the track's last note. Dim (--) where the track's sound takes none: other engines, the vocoder, the harmoniser, the drums. [RING](#the-cem-and-ladder-filters-and-ring) |
 
 - **PICKUP** (every bank): after a bank change a fader does nothing until it reaches the value the bank holds (within
   3 steps, or passing through it either way), then takes over without a jump. Its box at the left shows it: filled in
   the track's colour, live; outlined with an arrow, waiting (the arrow is the way to move); dim, nothing to set. The
   bar is the bank's value, the white tick where the fader is.
-- The banks' values are the project's (saved with it); E, F and G with the harmoniser's settings.
+- The banks' values are the project's (saved with it); E, F and G with the harmoniser's settings; RING with each
+  project slot (a project saved before it: RING off).
 
 ## Buttons
 
@@ -211,6 +215,10 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | PUNCH | CURVE | K8 | with STEM FX: EQUAL (default; the level holds through a stitch between unrelated audio) or LINEAR (the old ramp, ~3 dB down half way). A fresh loop's punch-in (the same audio both sides) stays linear. At once |
 | PUNCH 2 | TRIPLETS | K5 | [BEAT REPEAT](#selectable-punch-in-effects-the-stems-punched-and-beat-repeat)'s GRID with the triplets 1/6, 1/12, 1/24, 1/48: **ON** (default) / OFF (1/4, 1/8, 1/16, 1/32, 1/64 only; Ableton's NO TRIPLETS). Kept |
 | PUNCH 2 | VARIATION | K6 | BEAT REPEAT: each repeat's GRID chosen at random around the set one, 0 (default: a fixed grid) .. 10; exactly what each value does: [VARIATION](#variation-the-grid-at-random). Kept |
+| FILTER | SLOPE | K5 | Mewcoder: the [CEM / LADDER](#the-cem-and-ladder-filters-and-ring) low-pass, **24 DB** (default; four stages) or 12 DB (two). Every place the filter runs. Kept |
+| FILTER | WARMTH | K6 | 0 .. 100 (default **36**): the CEM's stages from odd harmonics (0: buzzier) to even (100: thick, warm). Kept |
+| FILTER | DRIFT | K7 | 0 (OFF) .. 100 (default **50**: ±4 cents, ±0.8 cutoff steps a voice, slowly): each ANALOG voice's pitch and cutoff wander, as analogue voices do (a chord shimmers). CEM / LADDER only. Kept |
+| TRACK FILTER | T1, T2, T3, DRUMS | K5–K8 | each track's FILTER (fader bank B, FX K4): **SVF** (default, as before), CEM or LADDER. T3 vocoding: the vocoder's output filter. T1 with HARMONY on: dim (it has no FILTER). Kept |
 | SEQ | FLIP RETURN | K7 | the stem page's FLIP and LOOP BACK, let go: SLIP (default; the tracks come back where they would have been) or CARRY (they go on from where the effect left them). At once |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND; Mewcoder: GLO > MIDI IN/OUT > BEND) |
@@ -514,6 +522,33 @@ Turning PRESETS (K4; K7 with KNOB LAYOUT = SMK) shows the sounds of the selected
 PRESETS order, 16 a page, then the user presets; on the drum track the drum kits. A pad loads its sound and plays a
 short preview; < > step the pages. It closes by itself a moment after the last turn, unless KNOB BANK pinned it.
 FADER BANK closes it (one screen at a time).
+
+## The CEM and LADDER filters, and RING
+
+Mewcoder (both builds) adds a second filter, modelled on the 24 dB filters of the polysynths of the late 1970s and 80s
+(the CEM3320's four cascaded stages): four one-pole stages with resonance fed back from the last, solved without a
+delay (so it stays in tune), each stage saturating softly as the chip's do. Two TYPEs:
+- **CEM**: the smooth one. Each stage saturates a little asymmetrically (WARMTH: even harmonics), the input is driven
+  hot, and the bass is made up as RES rises so a resonant sound does not go thin.
+- **LADDER**: the aggressive one. Its feedback saturates too and the bass is not made up: RES eats the bass and growls.
+
+Both **self-oscillate** at the top of RES (from about RES 118): a sine at the cutoff, in tune, which KTR makes playable.
+
+**Where it runs**
+- **ANALOG**: EDIT > FILTER > **TYPE**: LP, BP, HP (today's filter, LP the default: every preset and project sounds
+  as before), **CEM**, **LADDER**. With CEM or LADDER, **DRV** is the filter's own drive (×1 .. ×4 into its saturating
+  stages) in place of the soft clip before the filter, and DRIFT moves each voice. A CEM / LADDER voice costs about
+  four times an LP one on the keyboard's processor: a big CEM pad beside FM6 may shed voices (POLY CAP).
+- **Every track's FILTER** (fader bank B, FX K4): HOME > TRACK FILTER > T1, T2, T3, DRUMS: SVF (as before), CEM,
+  LADDER. Low-pass to the left as the 24 dB (or 12 dB) filter, high-pass to the right as a 24 dB high-pass mixed from
+  its stages; HOME > AUDIO > FILTER RESO sets the resonance (0 .. 10: up to the edge of self-oscillation). This is the
+  vocoder's output filter on T3, and the filter of a track playing an input. One filter a track: cheap.
+- **HOME > FILTER**: SLOPE (24 / 12 dB), WARMTH, DRIFT, for every place it runs.
+
+**RING** (the last fader bank, 0 off): on an ANALOG track the two oscillators multiplied (DTN sets the interval:
+metallic bells at odd intervals, a growl near unison), crossfaded in before the filter on any TYPE; on a track playing
+an input (T1 / T2 routed, or T3 in MODE AUDIO) the input multiplied by a sine at the track's last note, so a voice or
+an instrument turns pitched and metallic, played from the keys. Kept with each project slot.
 
 ## Mewcoder (the vocoder build)
 

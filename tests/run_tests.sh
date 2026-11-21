@@ -246,6 +246,8 @@ $CC -o "$OUT/smk_tpunch_test" tests/smk_tpunch_test.c -lm
 run "SMK-37 STEM FX rings: REVERSE keeps its span, the loops read only what they captured (PUNCH, HQ, every layout)" "$OUT/smk_tpunch_test"
 $CC -o "$OUT/smk_brep_test" tests/smk_brep_test.c
 run "SMK-37 BEAT REPEAT: INTERVAL, OFFSET, CHANCE, GRID, GATE, DECAY, PITCH, WET / DRY, MUTE (the sequencer's notes)" "$OUT/smk_brep_test"
+$CC -Ibuild/gen -o "$OUT/smk_cem_test" tests/smk_cem_test.c -lm
+run "SMK-37 CEM / LADDER filter: fixed point = the float reference, low cutoffs, self-oscillation in tune, silence, the high-pass, SLOPE, extremes, DRIFT" "$OUT/smk_cem_test"
 $CC -o "$OUT/smk_seqfx_test" tests/smk_seqfx_test.c
 run "SMK-37 FLIP, LOOP BACK, RAMP: steps, SLIP / CARRY, the ramp on its grid and floor, back on the DAW's clock" "$OUT/smk_seqfx_test"
 

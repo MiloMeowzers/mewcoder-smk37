@@ -618,6 +618,64 @@ static TAILINL int djf_block(djf_t *f, int32_t v, tsvf_t *c, int32_t reso)
     tsvf_coef(c, f->cut, reso);
     return 1;
 }
+#if SMK_CEM
+/* SMK-37, the vocoder builds: a track's FILTER as HOME > TRACK FILTER's CEM / LADDER (smk_cem.h; SVF: as it was). The same
+ * knob, glide and sides (djf_block): the low-pass from the four stages (or stage 2: SLOPE 12), the high-pass by pole
+ * mixing (4-pole); RESO from FILTER RESO (0 .. 10 -> RES 0 .. 120: up to the edge of self-oscillation). Stages 1, 2 in
+ * z[ch], 3, 4 here. T3 vocoding: its ENV > FLT, LFO > FLT move this filter (tflt_off: voice.c voc_ocut), the carrier's
+ * left open (cem-filter-spec.md §5) */
+static int32_t tcz[NTRK][4][2];
+static cem_t tcc[NTRK];
+static uint8_t tct_seen[NTRK];
+static int32_t tflt_off[NTRK];
+static int tflt_block(djf_t *f, int32_t v, tsvf_t *c)
+{
+    uint32_t k = (uint32_t)(f - tflt) % NTRK, ty = cem_tt[k] % TFT_N;
+    int8_t m0 = f->mode;
+    int r;
+    if (ty != tct_seen[k]) {                            /* (a new TYPE: from rest) */
+        tct_seen[k] = (uint8_t)ty;
+        memset(f->z, 0, sizeof f->z), memset(tcz[k], 0, sizeof tcz[k]);
+    }
+    r = djf_block(f, v, c, tflt_reso());
+    if (f->mode != m0)
+        memset(tcz[k], 0, sizeof tcz[k]);               /* (a side switched: as djf_block's own stages) */
+    if (r && (ty || tflt_off[k])) {
+        int32_t cut = clamp(f->cut + tflt_off[k], 0, 127 << 8);
+        if (ty)
+            cem_coef(&tcc[k], cut, (int32_t)(flt_reso > 10u ? 10u : flt_reso) * 12, ty == TFT_LADDER, CEM_ONE, CEM_ONE / 4);
+        else
+            tsvf_coef(c, cut, tflt_reso());
+    }
+    return r;
+}
+#define TFLT_BLOCK(f, v, c) tflt_block((f), (v), (c))
+/* n samples of channel ch (the signal at 4x, as tflt_run's) through the CEM / LADDER */
+static void tflt_cem(djf_t *f, uint32_t k, int32_t *b, uint32_t n, uint32_t ch)
+{
+    int32_t s4[4], *z = f->z[ch & 3u], *z2 = tcz[k][ch & 3u];
+    const cem_t *c = &tcc[k];
+    uint32_t i;
+    s4[0] = z[0], s4[1] = z[1], s4[2] = z2[0], s4[3] = z2[1];
+    if ((f->seed >> ch) & 1u) {
+        f->seed &= (uint8_t)~(1u << ch);
+        if (f->mode < 0 && n)                           /* (the low-pass at rest on this input: from it, no click) */
+            s4[0] = s4[1] = s4[2] = s4[3] = (clamp(b[0], -560000, 560000) << 7) / 4;
+    }
+    if (f->mode > 0)
+        for (i = 0; i < n; i++) {
+            int32_t hp;
+            (void)cem_tick(s4, c, clamp(b[i], -560000, 560000) << 7, &hp);
+            b[i] = hp >> 7;
+        }
+    else
+        for (i = 0; i < n; i++)
+            b[i] = cem_tick(s4, c, clamp(b[i], -560000, 560000) << 7, 0) >> 7;
+    z[0] = s4[0], z[1] = s4[1], z2[0] = s4[2], z2[1] = s4[3];
+}
+#else
+#define TFLT_BLOCK(f, v, c) djf_block((f), (v), (c), tflt_reso())
+#endif
 /* n samples of channel ch through the filter (x within +-140000) */
 static TAILINL void djf_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, uint32_t ch)
 {
@@ -639,6 +697,12 @@ static TAILINL void djf_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, u
 static void tflt_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, uint32_t ch)
 {
     uint32_t i;
+#if SMK_CEM
+    if (cem_tt[(uint32_t)(f - tflt) % NTRK] % TFT_N) {
+        tflt_cem(f, (uint32_t)(f - tflt) % NTRK, b, n, ch);
+        return;
+    }
+#endif
     for (i = 0; i < n; i++)
         b[i] >>= 2;
     djf_run(f, c, b, n, ch);
@@ -1179,15 +1243,22 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         {
             tsvf_t fc;                                  /* the track's FILTER (P_TFLT), after the SLICER */
             djf_t *f = &tflt[(uint32_t)(t - trk) % NTRK];
+#if SMK_CEM
+            tflt_off[(uint32_t)(t - trk) % NTRK] = VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW ? voc_ocut : 0;
+#endif
 #if SMK_UAC_IN_PROBE
-            if (!(VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW)   /* (track 3 vocoding: no FILTER; its fader and
+            if (
+#if !SMK_CEM                                            /* (the filter build: T3's FILTER on the vocoder's output,
+                                                         * cem-filter-spec.md §5; CARRIER CUTOFF in the menu only) */
+                !(VOC_TRK_AUDIO(t) && voc_mode % VM_N == VM_SAW) &&   /* (track 3 vocoding: no FILTER; its fader and
                                                          * FX's K4 are CARRIER CUTOFF, the owner 2026-11-02) */
+#endif
 #ifdef SMK_HARM
-                && !HM_T(t)                             /* (HARMONY: no FILTER; its fader is PITCH, smk_harm.h) */
+                !HM_T(t) &&                             /* (HARMONY: no FILTER; its fader is PITCH, smk_harm.h) */
 #endif
-                )
+                1)
 #endif
-            if (djf_block(f, t->p[P_TFLT], &fc, tflt_reso()))
+            if (TFLT_BLOCK(f, t->p[P_TFLT], &fc))
                 tflt_run(f, &fc, b, n, 0);
         }
         TIM_LAP(TS_P1 + (uint32_t)(t - trk) % NPART, tc);
@@ -1509,7 +1580,7 @@ static void mix_drums(uint32_t n, mixacc_t *mx)
     int flt;
     drums.a0 = TDRUM->att;                              /* the drum track's mute / solo fade */
     drums.a1 = 32767 - gain_next(TDRUM);
-    flt = n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc, tflt_reso());   /* the drum track's FILTER */
+    flt = n <= CTL && TFLT_BLOCK(f, TDRUM->p[P_TFLT], &fc);   /* the drum track's FILTER */
 #if BOARD_SMK37
     dg_ran = 0;
     if (n <= CTL && (tp_on || (stem_feed && (stem_layout == 1u || stem_layout == 3u))) && mix_drums_groups(n, mx, flt, &fc)) {
@@ -1558,19 +1629,24 @@ _Static_assert(TRK_DRUM == NPART && U_DRUMS == 1u << TRK_DRUM && U_DRUMS == VSU_
  * playing an input render (voice.c voc_tin_block), as they do while that fades */
 static uint32_t voc_setup_block(void)
 {
-    uint32_t want = VSU_SKIP(VOC_SETUP_ON) & ~(uint32_t)(hm_on ? 1u : 0u), k, skip;   /* (HARMONY: T1 renders,
+    uint32_t su = VSU_SKIP(VOC_SETUP_ON) & ~(uint32_t)(hm_on ? 1u : 0u), k, skip;   /* (HARMONY: T1 renders,
                                                          * whatever the SETUP) */
+    uint32_t want = su | (VOC_TRK_IN(0) ? 1u : 0u) | (VOC_TRK_IN(1) ? 2u : 0u);   /* (+ the tracks playing an input: no
+                                                         * notes there, their synth's released; they render the input) */
     if (want != voc_skip_want) {
         for (k = 0; k < VOC_TRK; k++)
             if ((want & ~(uint32_t)voc_skip_want) >> k & 1u)
                 trk_all_off(&trk[k]);
         voc_skip_want = (uint8_t)want;
+    }
+    if (su != voc_skip_su) {
+        voc_skip_su = (uint8_t)su;
         voc_skip_wait = VOC_SKIP_WAIT;
     }
     if (voc_skip_wait && !--voc_skip_wait)
-        voc_skip |= voc_skip_want;                      /* (off: after their release) */
+        voc_skip |= voc_skip_su;                        /* (off: after their release) */
     if (!voc_hq)
-        voc_skip &= voc_skip_want;                      /* (back on: once the vocoder is at 22.05 again, faded) */
+        voc_skip &= voc_skip_su;                        /* (back on: once the vocoder is at 22.05 again, faded) */
     skip = voc_skip;
     for (k = 0; k < VOC_TRK; k++)
         if (VOC_TRK_IN(k) || voc_tin_g[k])

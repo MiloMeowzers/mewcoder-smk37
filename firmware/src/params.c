@@ -39,7 +39,11 @@ static const char *const N_TXSRC[] = {"OFF", "VINYL", "TAPE", "RAIN", "WIND", "R
 static const char *const N_TXRATE[] = {"1BAR", "2BAR", "4BAR", "8BAR", "16BAR"};
 static const char *const N_TXWHEN[] = {"PLAY", "ALWAYS"};
 /* ANALOG's filter TYPE (eng_analog.c): the SVF's low-pass (as always), band-pass, high-pass output */
+#if SMK_CEM
+static const char *const N_FTYPE[] = {"LP", "BP", "HP", "CEM", "LADDER"};   /* (SMK-37 vocoder builds: smk_cem.h) */
+#else
 static const char *const N_FTYPE[] = {"LP", "BP", "HP"};
+#endif
 /* ENV SYNC (voice.c): ATK DEC REL as note values of the tempo, shortest first. 0..127 split evenly over these 25
  * (param_format's F_INT name list: value v is ESYNC_NAMES[v * 25 / 128]); ESYNC_UNITS: each in 1/384 of a bar of
  * 4/4 (a quarter 96), 0 = the shortest time ATK / DEC / REL 0 has. 0-terminated (param_format) */

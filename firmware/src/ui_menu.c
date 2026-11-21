@@ -76,6 +76,12 @@ enum { MI_COLOR, MI_ZOOM,
 #endif
        MI_PC1, MI_PC2, MI_PC3,                     /* POLY CAP > T1, T2, T3 (hm_pcap: OFF, 1..5 while HARMONY / the VOCODER
                                                     * runs; kept with the project, §13w-2) */
+#if SMK_CEM
+       MI_FSLOPE, MI_FWARM, MI_FDRIFT,             /* FILTER > SLOPE, WARMTH, DRIFT (smk_cem.h: the CEM / LADDER filter
+                                                    * wherever it runs; kept, project.c vocset) */
+       MI_TF1, MI_TF2, MI_TF3, MI_TF4,             /* TRACK FILTER > T1, T2, T3, DRUMS: each track's FILTER (bank B) SVF /
+                                                    * CEM / LADDER (fx.c tflt; kept) */
+#endif
 #endif
 #endif
        MI_ADV, MI_DPREV,
@@ -130,6 +136,9 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "LANE MONO", "VOICE", "T2", "T3", "DRUMS", "VOICE", "T2", "T3", "DRUMS",
 #endif
                                               "T1", "T2", "T3",
+#if SMK_CEM
+                                              "SLOPE", "WARMTH", "DRIFT", "T1", "T2", "T3", "DRUMS",
+#endif
 #endif
 #endif
                                               "STEP ADVANCE", "DRUM PREVIEW",
@@ -140,26 +149,42 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "2ND CORE", "HARDWARE CALIBRATION", "MIDI LEARN CLEAR", "ABOUT"};
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
+#if SMK_CEM                                       /* (the filter build: FILTER, TRACK FILTER after POLY CAP) */
+#define MS_FILT_E MS_FILT, MS_TFILT,
+#define MS_FILT_N "FILTER", "TRACK FILTER",
+#define MS_FILT_F MI_FSLOPE, MI_TF1,
+#define MI_AFTER_PC MI_FSLOPE
+#else
+#define MS_FILT_E
+#define MS_FILT_N
+#define MS_FILT_F
+#define MI_AFTER_PC MI_ADV
+#endif
+#if SMK_CEM
+#define SMK_CEM_ROWS_OK (MI_TF1 - MI_FSLOPE <= 4 && MI_ADV - MI_TF1 <= 4)
+#else
+#define SMK_CEM_ROWS_OK 1
+#endif
 #if SMK_UAC_IN_PROBE && !SMK_HARM_BUILD           /* Mewcoder: POLY CAP after ENVELOPE */
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_STEMS, MS_PUNCH, MS_PUNCH2, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_QUAL,
-       MS_ENV, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+       MS_ENV, MS_PCAP, MS_FILT_E MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "STEMS", "PUNCH", "PUNCH 2", "SETUP", "INPUT", "VOCODER",
-                                              "CARRIER", "SILENCE", "BRIDGE TONE", "QUALITY", "ENVELOPE", "POLY CAP",
+                                              "CARRIER", "SILENCE", "BRIDGE TONE", "QUALITY", "ENVELOPE", "POLY CAP", MS_FILT_N
                                               "SEQ", "PLAY", "MIDI", "DAW", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SLVL, MI_SFX, MI_RTRIP, MI_VSETUP, MI_VTRL,
-                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VFHQ, MI_VEATT, MI_PC1, MI_ADV,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VFHQ, MI_VEATT, MI_PC1, MS_FILT_F MI_ADV,
                                                MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
 #elif SMK_UAC_IN_PROBE
 enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_STEMS, MS_PUNCH, MS_PUNCH2, MS_SETUP, MS_INPUT, MS_VOC, MS_CARR, MS_SIL, MS_TONE, MS_QUAL,
-       MS_ENV, MS_HARM, MS_LTHIN, MS_LRATE, MS_PCAP, MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+       MS_ENV, MS_HARM, MS_LTHIN, MS_LRATE, MS_PCAP, MS_FILT_E MS_SEQ, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "STEMS", "PUNCH", "PUNCH 2", "SETUP", "INPUT", "VOCODER",
                                               "CARRIER", "SILENCE", "BRIDGE TONE", "QUALITY", "ENVELOPE", "HARMONY", "LANE THIN",
-                                              "LANE RATE", "POLY CAP", "SEQ", "PLAY", "MIDI",
+                                              "LANE RATE", "POLY CAP", MS_FILT_N "SEQ", "PLAY", "MIDI",
                                               "DAW", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_LAYOUT, MI_SLVL, MI_SFX, MI_RTRIP, MI_VSETUP, MI_VTRL,
-                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VFHQ, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_PC1, MI_ADV,
+                                               MI_VMODE, MI_VCUT, MI_VBR, MI_VTILT, MI_VFHQ, MI_VEATT, MI_HON, MI_LT0, MI_LR0, MI_PC1, MS_FILT_F MI_ADV,
                                                MI_VEL, MI_TRS,
                                                MI_DMAP, MI_SYS0, MI_COUNT};
 #define MI_VOC0 MI_VSETUP
@@ -175,9 +200,9 @@ _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LAYOUT - MI_LOWCUT <= 4 && MI_SLV
                MI_RTRIP - MI_SFX <= 4 &&
                MI_VOC0 - MI_RTRIP <= 4 &&
 #if SMK_UAC_IN_PROBE && !SMK_HARM_BUILD
-               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VFHQ - MI_VTILT <= 4 && MI_VEATT - MI_VFHQ <= 4 && MI_PC1 - MI_VEATT <= 4 && MI_ADV - MI_PC1 <= 4 &&
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VFHQ - MI_VTILT <= 4 && MI_VEATT - MI_VFHQ <= 4 && MI_PC1 - MI_VEATT <= 4 && MI_AFTER_PC - MI_PC1 <= 4 && SMK_CEM_ROWS_OK &&
 #elif SMK_UAC_IN_PROBE
-               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VFHQ - MI_VTILT <= 4 && MI_VEATT - MI_VFHQ <= 4 && MI_HON - MI_VEATT <= 4 && MI_LT0 - MI_HON <= 4 && MI_LR0 - MI_LT0 <= 4 && MI_PC1 - MI_LR0 <= 4 && MI_ADV - MI_PC1 <= 4 &&
+               MI_VTRL - MI_VOC0 <= 4 && MI_VMODE - MI_VTRL <= 4 && MI_VCUT - MI_VMODE <= 4 && MI_VBR - MI_VCUT <= 4 && MI_VTILT - MI_VBR <= 4 && MI_VFHQ - MI_VTILT <= 4 && MI_VEATT - MI_VFHQ <= 4 && MI_HON - MI_VEATT <= 4 && MI_LT0 - MI_HON <= 4 && MI_LR0 - MI_LT0 <= 4 && MI_PC1 - MI_LR0 <= 4 && MI_AFTER_PC - MI_PC1 <= 4 && SMK_CEM_ROWS_OK &&
 #else
                MI_ADV - MI_VOC0 <= 4 &&
 #endif
@@ -260,6 +285,10 @@ UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
             return line ? "IN VOC ALONE" : "TWO SAWS";
         return "";
     }
+#if SMK_CEM
+    if (i == MI_TF1 && hm_on)                           /* (T1 the harmoniser: no FILTER) */
+        return line ? "NO FILTER" : "HARMONY ON:";
+#endif
     if (i == MI_VMODE && hm_on)                         /* (HARMONY on: the vocoder off) */
         return line ? "HARMONY ON" : "LOCKED:";
 #ifdef SMK_HARM
@@ -279,12 +308,15 @@ UI_SMALL static const char *mi_guide(uint32_t i, uint32_t line)
                                                          * at most beside HARMONY: "THE HARMONISER" ran off the screen) */
         if (r == VR_T1 && hm_on)
             return line ? "HARMONY ON" : "T1 IS";
+#if !SMK_CEM                                            /* (the filter build: a route overrides the synth, any SETUP) */
         if ((r == VR_T1 || r == VR_T2) && !(VSU_SKIP(voc_setup % VSU_N) >> (r - VR_T1) & 1u))
             return line ? (r == VR_T1 ? "T1 OFF" : "T2 OFF") : "NEEDS A SETUP";
+#endif
         if (r == VR_CARR)
             return hm_on ? (line ? "HARMONY ON" : "VOCODER OFF:") : (line ? "GATE IT" : "T3 NOTES");
         if (r == VR_T1 || r == VR_T2)
-            return line ? "ITS CHAIN" : "AUDIO THROUGH";
+            return line ? "ITS CHAIN" : (SMK_CEM ? "SYNTH OFF:" : "AUDIO THROUGH");   /* (the filter build: the track's
+                                                         * synth set aside, the input through its chain) */
         if (r == VR_T3 && hm_on)
             return line ? "ITS LANE" : "T3 AUDIO:";      /* (HARMONY: T3 an audio track, harmonised on its own lane) */
         if (r == VR_T3)                                 /* (the owner, 2026-11-12: TRACK 3 read as the vocoder only; it
@@ -473,7 +505,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
 #endif
         };
         uint32_t r = (i == MI_VINL ? voc_inl : voc_inr) % VR_N;
-        *c = !VOC_AUDIO_ON ? C_DIM : ((r == VR_T1 || r == VR_T2) && !(VSU_SKIP(voc_setup % VSU_N) >> (r - VR_T1) & 1u)) ||
+        *c = !VOC_AUDIO_ON ? C_DIM : (!SMK_CEM && (r == VR_T1 || r == VR_T2) && !(VSU_SKIP(voc_setup % VSU_N) >> (r - VR_T1) & 1u)) ||
                                          (r == VR_T1 && hm_on) || (r == VR_HARM && !hm_on) || (r == VR_CARR && hm_on)
                                          ? C_AMB : C_HI;
         return N[r];
@@ -503,6 +535,28 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
                                                        * song's key (dim: HARMONY off) */
         *c = hm_on ? C_HI : C_DIM;
         return hm_int ? "SCALE" : "FIXED";
+#endif
+#if SMK_CEM
+    case MI_FSLOPE:                                   /* the CEM / LADDER low-pass: four stages, or two */
+        *c = C_HI;
+        return cem_slope ? "12 DB" : "24 DB";
+    case MI_FWARM:                                    /* 0 .. 100: odd harmonics (0, buzzy) .. even (100, thick) */
+    case MI_FDRIFT: {                                 /* 0 .. 100 (0 OFF): each voice's pitch and cutoff wander */
+        static char b[6];
+        uint32_t v = i == MI_FWARM ? cem_warm : cem_drift;
+        *c = C_HI;
+        if (i == MI_FDRIFT && !v)
+            return "OFF";
+        fmt_int(b, (int32_t)v);
+        return b;
+    }
+    case MI_TF1: case MI_TF2: case MI_TF3: case MI_TF4: {   /* the track's FILTER (bank B): SVF as before, CEM, LADDER
+                                                       * (dim: T1 while HARMONY is on: it has none) */
+        static const char *const N[TFT_N] = {"SVF", "CEM", "LADDER"};
+        uint32_t k = i - MI_TF1;
+        *c = k == 0u && hm_on ? C_DIM : C_HI;
+        return N[cem_tt[k] % TFT_N];
+    }
 #endif
     case MI_PC1: case MI_PC2: case MI_PC3: {          /* POLY CAP (§13w-2): the value, dimmed with why where it does
                                                        * nothing (kept: it acts again when the engine or mode changes) */
@@ -1169,6 +1223,27 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
         break;
     case MI_HNOTE:                                     /* (a readout) */
         break;
+#endif
+#if SMK_CEM
+    case MI_FSLOPE:                                    /* right 12 DB, left 24 DB; OCT+ toggles */
+        cem_slope = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !cem_slope);
+        break;
+    case MI_FWARM: {                                   /* 0 .. 100 in 2 (stops at the ends); OCT+ back to 36 */
+        int32_t v = s ? (int32_t)cem_warm + s * 2 : (int32_t)CEM_WARM_DEF;
+        cem_warm = (uint8_t)(v < 0 ? 0 : v > 100 ? 100 : v);
+        break;
+    }
+    case MI_FDRIFT: {                                  /* 0 (OFF) .. 100 in 5; OCT+ back to 50 */
+        int32_t v = s ? (int32_t)cem_drift + s * 5 : (int32_t)CEM_DRIFT_DEF;
+        cem_drift = (uint8_t)(v < 0 ? 0 : v > 100 ? 100 : v);
+        break;
+    }
+    case MI_TF1: case MI_TF2: case MI_TF3: case MI_TF4: {   /* right SVF -> CEM -> LADDER (the ends stop); OCT+ SVF */
+        uint32_t k = i - MI_TF1;
+        int32_t v = s ? (int32_t)cem_tt[k] + s : 0;
+        cem_tt[k] = (uint8_t)(v < 0 ? 0 : v > (int32_t)TFT_N - 1 ? (int32_t)TFT_N - 1 : v);
+        break;
+    }
 #endif
     case MI_PC1: case MI_PC2: case MI_PC3: {           /* right up, left down: OFF, 1 .. 5, AUTO (the ends stop);
                                                         * OCT+ back to AUTO */
