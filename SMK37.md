@@ -324,6 +324,11 @@ lower (PITCH). The knobs, as printed on the panel (the screen shows the same gri
 
 - The settings are kept with the keyboard, per track (and read by the editor); PUNCH 2 in the HOME menu has
   TRIPLETS and VARIATION.
+- **What it captures:** the notes that **start** in the GRID after the boundary. A note held from before (a pad, a
+  long chord), or a GRID with no note starting in it, gives nothing to repeat: that INTERVAL passes silently (its pad
+  is white only for the one GRID it listened, then goes back). With a long INTERVAL and an OFFSET, set the OFFSET onto a step that plays.
+- **GATE and INTERVAL:** with GATE equal to the INTERVAL (or a multiple), the last repeat ends on the next boundary and
+  it fires again there. A GATE longer than the INTERVAL plays out; the boundaries under it are skipped.
 - A harmoniser track (its notes are intervals) and an audio-in track (its notes play nothing) capture nothing.
 - Fast GRIDs restart voices often: POLY CAP AUTO keeps FM6 in check ([VOCODER.md](VOCODER.md)). The timing is the
   audio block's (within 5.8 ms); GRIDs under a step land between steps as the block allows.

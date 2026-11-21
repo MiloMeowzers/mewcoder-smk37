@@ -155,7 +155,12 @@ static void br_block(uint32_t adv)
         m += (q - (m + q - o32) % q) % q;               /* .. the first INTERVAL boundary from there */
         for (nb = (uint64_t)m * u32; nb < endb; m += q, nb = (uint64_t)m * u32) {
             b->pulse_ms = fm1_ms;
-            if (!b->phase && br_rand(100u) < s[BR_CHANCE]) {   /* CHANCE: the capture begins */
+            /* a boundary fires when nothing repeats, or when the repeat's GATE has run out by it (GATE = INTERVAL, or
+             * a multiple of it: the last repeat ends on the boundary; checked here, before the repeats are walked
+             * below, else that boundary was skipped and it fired every other INTERVAL). A GATE longer than the
+             * INTERVAL still plays out: the boundaries under it are skipped */
+            if ((!b->phase || (b->phase == 2u && b->end <= nb)) && br_rand(100u) < s[BR_CHANCE]) {   /* CHANCE */
+                br_offs(k);                             /* (the last repeat's notes, if one was playing: ended) */
                 b->phase = 1, b->n = 0, b->k = 0, b->shift = 0, b->vg = 32768;
                 b->cs = nb;
                 b->glen = br_glen(k);
@@ -186,10 +191,13 @@ static void br_block(uint32_t adv)
                     br_play(k, i);
             }
         }
-        if (b->phase == 2u)                             /* the notes later in a repeat begun in an earlier block */
+        if (b->phase == 2u && b->cs <= pos)             /* the notes of a repeat begun before this block, or on its first
+                                                         * clock unit (a repeat that starts exactly where the last block
+                                                         * ended: that block played none of it, t < its end; with
+                                                         * "cs < pos" here its every note was lost) */
             for (i = 0; i < b->n; i++) {
                 uint64_t t = b->cs + b->ev[i].off;
-                if (b->ev[i].off && b->ev[i].off < b->glen && t >= pos && t < endb && b->cs < pos)
+                if (b->ev[i].off < b->glen && t >= pos && t < endb)
                     br_play(k, i);
             }
     }
