@@ -42,9 +42,10 @@ static void seq_out_off(const track_t *t, uint32_t note) { (void)t, (void)note; 
 #define BLK 256u
 #define SIXT (BEAT_U / 4u)                              /* a 1/16 in clock units */
 /* bars of play: each block the repeater, then the steps that start in it (a note a 1/16 on T1 and the drums) */
+static uint32_t adv_set;                            /* (0: BLK x BPM; else this many clock units a block) */
 static void run(uint32_t bars)
 {
-    uint32_t adv = BLK * BPM, blocks = (uint32_t)((uint64_t)bars * 4u * BEAT_U / adv), b;
+    uint32_t adv = adv_set ? adv_set : BLK * BPM, blocks = (uint32_t)((uint64_t)bars * 4u * BEAT_U / adv), b;
     uint64_t next = 0;
     nlg = 0, noffs = 0, clk_beat = 0, clk_pos = 0;
     song.playing = 1;
@@ -116,17 +117,22 @@ int main(void)
     br_s[0][BR_PITCH] = 2;
     run(2);
     n = count(0, 1);
-    ok = n == 12u;                                      /* (GATE = INTERVAL: a boundary while it repeats is
-                                                         * skipped, so it fires every other half bar: 2 x 2 notes x 3) */
+    ok = n == 20u;                                      /* (GATE = INTERVAL: the last repeat ends on the next
+                                                         * boundary, which fires: every half bar, 2 notes x 3 at 4/16,
+                                                         * 12/16, 20/16; the one at 28/16 cut by the run's end at 32/16
+                                                         * after 1 repeat) */
     for (i = 0; i < nlg; i++)
         if (lg[i].rep && lg[i].k == 0u) {
             uint64_t hb = 2u * (uint64_t)BEAT_U, into = (lg[i].at + BLK * BPM + hb - 4u * SIXT) % hb;   /* from the
                                                          * boundary (OFFSET 4/16; a block early at most) */
             uint32_t r = (uint32_t)(into / (2u * SIXT)), want_v = 100u >> r;   /* (DECAY 50 % a repeat) */
+            uint32_t b16 = 4u + 8u * (uint32_t)(((lg[i].at + BLK * BPM + 2u * hb - 4u * SIXT) / hb) % 2u);   /* (the
+                                                         * boundary's 1/16 in the bar: 4 or 12) */
             ok &= r >= 1u && r <= 3u && lg[i].vel == want_v &&
-                  (lg[i].note == 64u - 2u * r || lg[i].note == 65u - 2u * r);   /* (the 1/8 at 4/16: steps 4, 5; PITCH 2) */
+                  (lg[i].note == 60u + b16 - 2u * r || lg[i].note == 61u + b16 - 2u * r);   /* (the 1/8 captured there:
+                                                         * 2 steps; PITCH 2) */
         }
-    snprintf(what, sizeof what, "T1, 1/2 / 1/8 / GATE 8/16 / OFFSET 4/16 / DECAY 50 / PITCH 2: 3 repeats of 2 notes, halving (%u)", n);
+    snprintf(what, sizeof what, "T1, 1/2 / 1/8 / GATE 8/16 / OFFSET 4/16 / DECAY 50 / PITCH 2: every half bar, 3 repeats of 2 notes, halving (%u)", n);
     check(what, ok);
     /* 6. let go mid-repeat: it stops, the repeat's notes ended */
     {
@@ -136,6 +142,44 @@ int main(void)
         br_toggle(0, 0);
         check("switched off: no repeat playing", br[0].phase == 0u && noffs >= offs0);
     }
+    br_on = 1u << TRK_DRUM;
+    /* 7. a repeat that starts exactly on a block's edge (blocks of 1/320 bar: every 1/32 on an edge): every repeat
+     * played (a repeat begun where the last block ended was lost whole before 2026-11-21) */
+    adv_set = BEAT_U / 80u;
+    run(4);
+    n = count(TRK_DRUM, 1);
+    snprintf(what, sizeof what, "the grid on the blocks' edges: still 3 repeats a bar (%u of 12)", n);
+    check(what, n == 12u);
+    adv_set = 0;
+    /* 8. long INTERVALs with OFFSET: 2 BARS at 6/16 over 4 bars, 4 BARS at 15/16 over 8 bars (the drums: note 36 + the
+     * 1/16 in the bar) */
+    {
+        static const struct { uint8_t iv, ofs, bars; uint32_t cyc16, note; } L[2] = {{6, 6, 4, 32, 42}, {7, 15, 8, 64, 51}};
+        uint32_t j;
+        for (j = 0; j < 2u; j++) {
+            br_s[TRK_DRUM][BR_IVAL] = L[j].iv, br_s[TRK_DRUM][BR_OFS] = L[j].ofs;
+            run(L[j].bars);
+            n = count(TRK_DRUM, 1);
+            ok = n == 6u;                               /* (two fires, 3 repeats each) */
+            for (i = 0; i < nlg; i++)
+                if (lg[i].rep) {
+                    uint64_t into = (lg[i].at + BLK * BPM) % ((uint64_t)L[j].cyc16 * SIXT);   /* (a block early at most) */
+                    uint32_t r = (uint32_t)(into / SIXT) - L[j].ofs;
+                    ok &= lg[i].note == L[j].note && r >= 1u && r <= 3u;
+                }
+            snprintf(what, sizeof what, "INTERVAL %s, OFFSET %u/16: fires once an INTERVAL on that 1/16, its hit 3 times after (%u)",
+                     j ? "4 BARS" : "2 BARS", L[j].ofs, n);
+            check(what, ok);
+        }
+        br_s[TRK_DRUM][BR_IVAL] = 5, br_s[TRK_DRUM][BR_OFS] = 0;
+    }
+    /* 9. GATE = INTERVAL at 1 bar (GRID 1/4): every bar fires (it fired every other bar before 2026-11-21) */
+    br_s[TRK_DRUM][BR_GATE] = 16, br_s[TRK_DRUM][BR_GRID] = 0;
+    run(4);
+    n = count(TRK_DRUM, 1);
+    snprintf(what, sizeof what, "1 BAR, GRID 1/4, GATE 16/16: every bar, 3 repeats of its first beat's 4 hits (%u of 48)", n);
+    check(what, n == 48u);
+    br_s[TRK_DRUM][BR_GATE] = 4, br_s[TRK_DRUM][BR_GRID] = 4;
     printf(fails ? "SMK BREP TEST FAILED (%d)\n" : "smk_brep: all ok\n", fails);
     return fails != 0;
 }
