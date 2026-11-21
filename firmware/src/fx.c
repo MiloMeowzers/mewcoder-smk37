@@ -277,6 +277,12 @@ static int32_t stem_stage[6][CTL];       /* the last block's channels, in the la
 static const int32_t *const STEM_STAGE[6] = {stem_stage[0], stem_stage[1], stem_stage[2], stem_stage[3], stem_stage[4],
                                              stem_stage[5]};
 static int32_t stem_sm0, stem_sm1;       /* their level over that block, Q12 */
+/* HOME > STEMS > STEM LEVEL (the owner, 2026-11-21: 6 - 8 dB added to each stem in the DAW): where the stereo mix's full
+ * scale sits on a stem: -18 dBFS (as before, the default), -12 or -6 (16-bit stems: more of their range used). No
+ * limiter on the stems: less room before a loud moment clips at their full scale. Live; kept (smkset pflags bits 1..2) */
+enum { STLV_18, STLV_12, STLV_6, STLV_N };
+static uint8_t stem_lv;
+static const int32_t STLV_Q12[STLV_N] = {4096, 8192, 16384};
 static uint32_t stem_sn;                 /* its samples */
 static uint8_t stem_staged;              /* it waits for the resampler */
 /* usb.c's side (audio.c sets them): the block goes in or not, the channels c_lo .. c_hi - 1, the ring moved on */
@@ -2421,7 +2427,7 @@ static RAMHOT void mix_tail(int32_t *out, uint32_t n)
                         stem_stage[c][i] = (int32_t)(((int64_t)stem_stage[c][i] * g) >> 15);
             }
         }
-        stem_sm0 = stem_sm1 = 4096;                     /* a fixed level: the stems do not follow MASTER (the DAW
+        stem_sm0 = stem_sm1 = STLV_Q12[stem_lv % STLV_N];   /* a fixed level (STEM LEVEL's): the stems do not follow MASTER (the DAW
                                                          * mixes them; usb.c leaves 18 dB of headroom) */
         stem_sn = n;
         stem_staged = 1;

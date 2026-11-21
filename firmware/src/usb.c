@@ -1627,8 +1627,11 @@ static inline __attribute__((always_inline)) void uac6_fir(const int32_t *const 
                 int32_t a = 2048, v;
                 for (j = 0; j < nt; j++)
                     a += t[j] * x[j];
-                v = ((a >> 12) * m) >> 6;               /* (half mix units x m / 4096 x 128 x 2 / 4: 18 dB of headroom) */
-                v = v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v;
+                {   /* (half mix units x m / 4096 x 128 x 2 / 4: 18 dB of headroom at m = 4096; STEM LEVEL's x 2 / x 4
+                     * (fx.c): 64 bit, so a peak far over the ceiling clips there instead of wrapping) */
+                    int64_t q = ((int64_t)(a >> 12) * m) >> 6;
+                    v = q > 8388607 ? 8388607 : q < -8388608 ? -8388608 : (int32_t)q;
+                }
                 f[0] = (uint8_t)v, f[1] = (uint8_t)(v >> 8), f[2] = (uint8_t)(v >> 16);
             }
             ph += UAC_FIR_M;
