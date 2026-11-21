@@ -188,7 +188,7 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | PUNCH | XFADE | K7 | with STEM FX: the shortest stitch on the stems (a punch in or out), 1.5 / 2.9 (default) / 5.8 MS; FADE makes it longer. At once |
 | PUNCH | CURVE | K8 | with STEM FX: EQUAL (default; the level holds through a stitch between unrelated audio) or LINEAR (the old ramp, ~3 dB down half way). A fresh loop's punch-in (the same audio both sides) stays linear. At once |
 | PUNCH 2 | TRIPLETS | K5 | [BEAT REPEAT](#selectable-punch-in-effects-the-stems-punched-and-beat-repeat)'s GRID with the triplets 1/6, 1/12, 1/24, 1/48: **ON** (default) / OFF (1/4, 1/8, 1/16, 1/32, 1/64 only; Ableton's NO TRIPLETS). Kept |
-| PUNCH 2 | VARIATION | K6 | BEAT REPEAT: each repeat's GRID chosen at random around the set one, 0 (default: a fixed grid) .. 10. Kept |
+| PUNCH 2 | VARIATION | K6 | BEAT REPEAT: each repeat's GRID chosen at random around the set one, 0 (default: a fixed grid) .. 10; exactly what each value does: [VARIATION](#variation-the-grid-at-random). Kept |
 | SEQ | FLIP RETURN | K7 | the stem page's FLIP and LOOP BACK, let go: SLIP (default; the tracks come back where they would have been) or CARRY (they go on from where the effect left them). At once |
 | PLAY | KEY VELOCITY | K5 | see [Velocity](#velocity) |
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND; Mewcoder: GLO > MIDI IN/OUT > BEND) |
@@ -323,7 +323,7 @@ lower (PITCH). The knobs, as printed on the panel (the screen shows the same gri
 | K8 | WET/DRY: the repeats against the track's own notes | 0 (only the track) .. 50 (both full) .. 100 (only the repeats while they play) | 50 |
 
 - The settings are kept with the keyboard, per track (and read by the editor); PUNCH 2 in the HOME menu has
-  TRIPLETS and VARIATION.
+  TRIPLETS and VARIATION (below; both for every track).
 - **What it captures:** the notes that **start** in the GRID after the boundary. A note held from before (a pad, a
   long chord), or a GRID with no note starting in it, gives nothing to repeat: that INTERVAL passes silently (its pad
   is white only for the one GRID it listened, then goes back). With a long INTERVAL and an OFFSET, set the OFFSET onto a step that plays.
@@ -334,6 +334,33 @@ lower (PITCH). The knobs, as printed on the panel (the screen shows the same gri
   audio block's (within 5.8 ms); GRIDs under a step land between steps as the block allows.
 - **MIDI:** on FX CH, notes 84-87 latch BEAT REPEAT on T1-T4 (note on = on, note off = off), so a DAW's recording
   replays exactly. The settings are not sent.
+
+#### VARIATION: the GRID at random
+
+HOME > PUNCH 2 > **VARIATION** (0 .. 10, the same for every track) makes each repeat's GRID a random pick around the
+GRID set on K3, so the repeats stutter in and out of time. It moves along the GRID list, one place a step:
+
+**1/4 · 1/6 · 1/8 · 1/12 · 1/16 · 1/24 · 1/32 · 1/48 · 1/64** (the triplets 1/6, 1/12, 1/24, 1/48 with TRIPLETS ON)
+
+| VARIATION | Each repeat's GRID | With GRID 1/16, TRIPLETS ON: picks from |
+|---|---|---|
+| **0** (default) | always the set GRID | 1/16 |
+| **1 or 2** | the set GRID or one place either side | 1/12, 1/16, 1/24 |
+| **3 or 4** | up to two places either side | 1/8 .. 1/32 (five values) |
+| **5 or 6** | up to three places either side | 1/6 .. 1/48 (seven values) |
+| **7 or 8** | up to four places either side | 1/4 .. 1/64 (all nine) |
+| **9 or 10** | up to five places either side | all nine, the ends more often |
+
+- **Odd and even values pair up** (1 = 2, 3 = 4, ...): six settings in all.
+- **Each place in the range is equally likely.** A range that runs past an end of the list counts the end once for
+  every place past it, so the slowest and fastest come up more often (at GRID 1/4 with VARIATION 2: 1/4 two times in
+  three, 1/6 one in three).
+- **TRIPLETS OFF:** a pick that lands on a triplet plays the next slower straight GRID instead (1/12 plays 1/8, 1/24
+  plays 1/16 ...). At GRID 1/16 with VARIATION 2: 1/8 one time in three, 1/16 two in three.
+- **When it picks:** once for the capture (so the length listened to varies too) and again for each repeat after.
+  A repeat shorter than the capture plays only the captured notes that fit in it; a longer one plays them all and
+  leaves a gap after. GATE still ends the repeats at the same time.
+- Ableton's VARIATION modes (TRIGGER, 1/4, 1/8, 1/16, AUTO) are not built: this is one mode, a new pick every repeat.
 
 ### Sequencer effects (row 4)
 
