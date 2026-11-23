@@ -23,9 +23,9 @@ def ok(cond, what):
 
 
 raw = Path(sys.argv[1]).read_bytes()
-want_product = sys.argv[2] if len(sys.argv) > 2 else "SMK-37 Pro_900"
-image, n = I.deinterleave(raw)
-ok(n == 20 and I.product_of(raw) == want_product and not I.package_damage(image),
+want_product = sys.argv[2] if len(sys.argv) > 2 else "SMK-37 Pro_900"   # (a | b: either; the Elite package in build/ is
+image, n = I.deinterleave(raw)                                                # the last built: SLOOP's or a vocoder build's)
+ok(n == 20 and I.product_of(raw) in want_product.split("|") and not I.package_damage(image),
    f"identity {I.product_of(raw)}, 20 blocks, CRCs ok")
 hdr = I._dec(image[:0x40])
 e0 = I._dec(image[0x40:0x90])
