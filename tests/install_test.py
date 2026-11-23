@@ -331,6 +331,14 @@ def smk():
     dev = FakeFM1(image, identity="ota-SMK-37 Pro_900", name="Felucca Update", after_write="SMK-37 Pro_900")
     rc, out, err = cli([p, "--yes"], dev)
     ok(rc == 0 and dev.upgrades == 1, "SMK in SLOOP's update mode -> finishes the write")
+    # the vocoder builds' own identity (tools/build.py VOC_IDENT; The Firmware Hub): 20 characters, our loader kept
+    pv = pkgfile("voc.fwsc", package("SMK-37 Elite_9370002"))
+    iv = I.logical_image(package("SMK-37 Elite_9370002"))
+    dev = FakeFM1(iv, identity="SMK-37 Elite_900", name="SMK-37 Elite Midi", after_write="SMK-37 Elite_9370002",
+                  loader=("ota-SMK-37 Elite_900", "Felucca Update"))
+    rc, out, err = cli([pv, "--yes"], dev)
+    ok(rc == 0 and dev.bad == 0 and dev.upgrades == 2 and "runs SMK-37 Elite_9370002" in out,
+       "install Mewcoder + Harmoniser's own identity (SMK-37 Elite_9370002) over SMK-37 Elite_900, through our loader")
     dev = FakeFM1(image, identity="ota-SMK-37 Pro_016", name="SMK-37 Pro Midi")
     rc, out, err = cli([p, "--yes"], dev)
     ok(rc == 6 and dev.upgrades == 0 and "another firmware" in err, "SMK in the stock loader -> exit 6, nothing sent")

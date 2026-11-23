@@ -1879,7 +1879,9 @@ async function stockReturn() {
   const ours = await identifyStockPackage(relabel(any, "SMK-37 Pro_901")).catch((e) => e);
   const ours2 = await identifyStockPackage(relabel(any, "MKE-P37_700")).catch((e) => e);
   const ours3 = await identifyStockPackage(relabel(any, "SMK-37_904")).catch((e) => e);
-  ok(ours.code === "ours" && ours2.code === "ours" && ours3.code === "ours", "stock: our own packages (_9xx / _7xx, 'SMK-37_9xx'): refused here");
+  const ours4 = await identifyStockPackage(relabel(any, "SMK-37 Elite_9370001")).catch((e) => e);   /* (the vocoder builds' own) */
+  ok(ours.code === "ours" && ours2.code === "ours" && ours3.code === "ours" && ours4.code === "ours",
+    "stock: our own packages (_9xx / _7xx, 'SMK-37_9xx', the vocoder builds' _937xxxx): refused here");
   const fm1pkg = await identifyStockPackage(relabel(any, "FM-1_016")).catch((e) => e);
   ok(fm1pkg.code === "fm1", "stock: an FM-1 package: refused ('fm1')");
   const big = await identifyStockPackage(relabel(any, "SMK-37 Pro_150")).catch((e) => e);

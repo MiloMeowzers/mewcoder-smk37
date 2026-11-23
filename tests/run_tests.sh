@@ -279,7 +279,8 @@ for m in 1 2; do                         # the MODEL=elite / mke builds of ota.c
     $CC -DBOARD_SMK37=1 -DT_MODEL=$m -o "$OUT/ota_test_smk_m$m" tests/ota_test.c
     run "M-UPGRADE entry, SMK-37 model $m (1 Elite, 2 MKE-P37): identity and parm under its name" "$OUT/ota_test_smk_m$m" "$OUT/smk_new.fwsc"
 done
-for m in "elite:SMK-37 Elite_900" "mke:MKE-P37_900"; do
+for m in "elite:SMK-37 Elite_900|SMK-37 Elite_9370001|SMK-37 Elite_9370002" "mke:MKE-P37_900"; do   # (Elite: SLOOP, or the vocoder
+                                         # builds' own identities, tools/build.py VOC_IDENT)
     f="build/sloop-smk37-${m%%:*}.fwsc"
     [ -f "$f" ] && run "SMK-37 ${m%%:*} build package: layout, identity ${m#*:}" python3 tests/smk_pkg_test.py "$f" "${m#*:}"
 done

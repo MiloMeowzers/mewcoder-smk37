@@ -12,7 +12,7 @@ name: SMK-37 build
 
 on:
   push:
-    branches: [ci, uac-in, mewcoder, harmoniser]   # (uac-in: mewcoder on the private repository)
+    branches: [ci, uac-in, mewcoder, harmoniser, rel-harmoniser-v0.3.1]   # (rel-harmoniser-v0.3.1: the release's identity point build)   # (uac-in: mewcoder on the private repository)
   workflow_dispatch:
 
 # a newer push to the same branch stops the run before it (the owner, 2026-11-11: the private repository's Actions
@@ -23,7 +23,7 @@ concurrency:
 
 env:
   # (the vocoder branches: their package only, no Pro / MKE / probes)
-  VOC_ONLY: ${{ contains(fromJSON('["uac-in", "mewcoder", "harmoniser"]'), github.ref_name) }}
+  VOC_ONLY: ${{ contains(fromJSON('["uac-in", "mewcoder", "harmoniser", "rel-harmoniser-v0.3.1"]'), github.ref_name) }}
   BASE: 91f3018                      # SLOOP 2.8.4, the port's upstream base (was d893642, 2.8.1)
   JIELI_TOOLCHAIN: /home/runner/.jieli/toolchain
   AC79_SDK: /home/runner/fw-AC79_AIoT_SDK
@@ -158,7 +158,7 @@ jobs:
           # (no test signals: USB LAYOUT stereo or the stems), lean (SMK_VOC_LEAN: smk37-devtools vocoder-ui-spec.md
           # §1: no built-in samples, TEXTURE or five engines; SLICE on user samples; the delay at 22.05 kHz)
           # one source, two builds (smk37-devtools vocoder-update-audit.md): the harmoniser branch adds the harmoniser
-          hb=0; [ "${{ github.ref_name }}" = harmoniser ] && hb=1
+          hb=0; case "${{ github.ref_name }}" in harmoniser|rel-harmoniser*) hb=1 ;; esac
           BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 \
             SMK_HARM_BUILD=$hb sh build.sh \
             > out/build-smk37-elite-voc.log 2>&1 || { tail -50 out/build-smk37-elite-voc.log; exit 1; }
@@ -178,8 +178,8 @@ jobs:
           # it is served from localhost (serve-installer.ps1), not opened as a file
           h=$(git rev-parse --short HEAD)
           case "${{ github.ref_name }}" in       # (the build's name in its editor's file and the installer's version)
-            harmoniser) v="2.8.4-mewcoder-harmoniser-$h" ;;
-            mewcoder|uac-in) v="2.8.4-mewcoder-$h" ;;
+            harmoniser|rel-harmoniser*) v="2.8.4-mewcoder-harmoniser-$h" ;;
+            mewcoder|uac-in|rel-mewcoder*) v="2.8.4-mewcoder-$h" ;;
             *) v="2.8.4-smk37-$h" ;;
           esac
           if [ "$VOC_ONLY" = true ]; then      # (the vocoder branch: its own package's site and editor)
