@@ -78,6 +78,7 @@ MANUAL = {"stems": (f"{REPO}/blob/ci/SMK37.md", "The SMK-37 manual"),      # (Me
           "mewcoder": (f"{REPO}/blob/mewcoder/VOCODER.md", "The vocoder manual"),   # the manuals on the harmoniser
           "harmoniser": (f"{REPO}/blob/harmoniser/HARMONISER.md", "The harmoniser manual")}[build]   # branch)
 # the vocoder builds: the SMK-37 manual too (Selectable Punch In Effects, BEAT REPEAT, VARIATION, the fader banks)
+MAIN = ("https://milomeowzers.github.io/mewcoder-smk37/", "All the SMK-37 builds")   # (the main page: every build, each with its installer and editor; the installer and editor pages link back to it)
 MANUAL2 = None if build == "stems" else (f"{REPO}/blob/{build}/SMK37.md", "The SMK-37 manual")
 SITE = "https://milomeowzers.github.io/mewcoder-smk37/" + {"stems": "", "mewcoder": "mewcoder/webapp/installer/",
                                                         "harmoniser": "harmoniser/webapp/installer/"}[build]
@@ -138,6 +139,7 @@ html = sub1(r'(\s*<p><button id="app" class="ed" hidden data-t="appInstall"></bu
             f'\n  <p><a class="ed" href="{MANUAL[0]}" target="_blank" rel="noopener">{MANUAL[1]}</a></p>' +
             (f'\n  <p><a class="ed" href="{MANUAL2[0]}" target="_blank" rel="noopener">{MANUAL2[1]}</a></p>'
              if MANUAL2 else "") +
+            f'\n  <p><a class="ed" href="{MAIN[0]}">{MAIN[1]}</a></p>' +
             r'\1' + '\n  <h2 class="shots-h">On the keyboard</h2>\n  <div class="shots">\n' + "".join(
                 f'    <figure><img src="shots/{n}.png" width="240" height="240" alt="" loading="lazy">'
                 f'<figcaption><b>{c}</b>{s}</figcaption></figure>\n' for n, c, s in SHOTS) + "  </div>", html, expand=True)
@@ -245,7 +247,7 @@ for ed in (out / "webapp" / "editor" / "index.html", out / "webapp" / "editor" /
     e = sub1(r'(<a class="dim" href="[^"]*"(?: target="_blank" rel="noopener")? data-t="installer"></a>)',
              rf'\1<a class="dim" href="{MANUAL[0]}" target="_blank" rel="noopener">Manual</a>' +
              (rf'<a class="dim" href="{MANUAL2[0]}" target="_blank" rel="noopener">SMK-37 manual</a>'
-              if MANUAL2 else ""), e, expand=True)
+              if MANUAL2 else "") + rf'<a class="dim" href="{MAIN[0]}" target="_blank" rel="noopener">All builds</a>', e, expand=True)
     # the side bar's top: the build's name and its version, in place of SLOOP's logo and "editor"
     e = sub1(r'<a class="brand" href="#sound" aria-label="SLOOP">.*?</a>',
              f'<a class="brand smkb" href="#sound" aria-label="{htmlmod.escape(BNAME)}">{BRAND}</a>', e, re.S)
