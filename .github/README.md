@@ -5,10 +5,11 @@ sound you choose, in over USB audio, played dry, through a **20-channel vocoder*
 into **up to three harmony voices** modelled on the Eventide H949, with a lane of it across every track. One of the
 builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/mewcoder-smk37). **Early testing / pre-release.**
 
-**[Install](https://milomeowzers.github.io/mewcoder-smk37/harmoniser/webapp/installer/)** ·
+**[Installer](https://milomeowzers.github.io/mewcoder-smk37/harmoniser/webapp/installer/)** ·
 **[Editor](https://milomeowzers.github.io/mewcoder-smk37/harmoniser/webapp/editor/)** ·
 [Harmoniser manual](/HARMONISER.md) · [Vocoder manual](/VOCODER.md) ·
-[Release](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder%2Bharmoniser-v0.3-pre)
+[All the SMK-37 builds](https://milomeowzers.github.io/mewcoder-smk37/) ·
+[Release](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder%2Bharmoniser-v0.3.1-pre)
 
 > Unofficial firmware, not affiliated with or endorsed by M-Vave or Eventide. No warranty. **Back up the keyboard
 > first** ([how](/SMK37.md#install)).
@@ -60,7 +61,7 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 ## Start
 
 1. Back up the keyboard's flash ([how](/SMK37.md#install)) and your projects (the editor's Backup).
-2. [Install](https://milomeowzers.github.io/mewcoder-smk37/harmoniser/webapp/installer/) (Chrome or Edge, over USB).
+2. Install with the [installer](https://milomeowzers.github.io/mewcoder-smk37/harmoniser/webapp/installer/) (Chrome or Edge, over USB).
 3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
 4. HOME > INPUT > **AUDIO IN: ON**; HOME > HARMONY > **HARMONY: ON: T1**; HOME > SETUP > **IN R: HARMONY** (the side
    your voice is on).
@@ -69,5 +70,5 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 The [harmoniser manual](/HARMONISER.md) has the rest; how it was tested, and how to keep a heavy setup in time, in
 [A13](/HARMONISER.md#a13-built-and-tested-for-heavy-use).
 
-Branch `harmoniser` · release [`mewcoder+harmoniser-v0.3-pre`](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder%2Bharmoniser-v0.3-pre) ·
+Branch `harmoniser` · release [`mewcoder+harmoniser-v0.3.1-pre`](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder%2Bharmoniser-v0.3.1-pre) ·
 GPL-3.0-only
