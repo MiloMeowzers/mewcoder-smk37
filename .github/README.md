@@ -4,10 +4,11 @@ SLOOP 2.8.4 with a vocoder, for the M-Vave SMK-37 Elite: **your voice, or any so
 through a **20-channel vocoder** modelled on the Sennheiser VSM201, played from the keys and the sequencer. One of the
 two builds of [SLOOP for the SMK-37](https://github.com/MiloMeowzers/mewcoder-smk37).
 
-**[Install](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/installer/)** ·
+**[Installer](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/installer/)** ·
 **[Editor](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/editor/)** ·
 [Manual](/VOCODER.md) ·
-[Release](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder-v0.2)
+[All the SMK-37 builds](https://milomeowzers.github.io/mewcoder-smk37/) ·
+[Release](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder-v0.2.1)
 
 > Unofficial firmware, not affiliated with M-Vave. No warranty. **Back up the keyboard first** ([how](/SMK37.md#install)).
 
@@ -56,7 +57,7 @@ NOISE engines. Need them? Use [Multichannel USB audio](https://github.com/MiloMe
 ## Start
 
 1. Back up the keyboard's flash ([how](/SMK37.md#install)) and your projects (the editor's Backup).
-2. [Install](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
+2. Install with the [installer](https://milomeowzers.github.io/mewcoder-smk37/mewcoder/webapp/installer/) (Chrome or Edge, over USB).
 3. On the computer, send your microphone to the SMK-37's audio output (peaks around −10 dBFS).
 4. HOME > INPUT > **AUDIO IN: ON**, HOME > VOCODER > **MODE: VOCODER**, select track 3, play chords and speak.
 5. A mono mic on one side: HOME > SETUP > **IN R: OFF** (or IN L), for its full level. HOME > **INPUT** shows each
@@ -68,5 +69,5 @@ The [manual](/VOCODER.md) has the rest.
 this build with one modelled on the Eventide H949: your voice, the drums or a synth pitch-shifted into up to three
 harmony voices, on the same routing.
 
-Branch `mewcoder` · release [`mewcoder-v0.2`](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder-v0.2) ·
+Branch `mewcoder` · release [`mewcoder-v0.2.1`](https://github.com/MiloMeowzers/mewcoder-smk37/releases/tag/mewcoder-v0.2.1) ·
 how it was built: [VOCODER-DESIGN.md](/VOCODER-DESIGN.md) · GPL-3.0-only
