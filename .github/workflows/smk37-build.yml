@@ -159,6 +159,14 @@ jobs:
           BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 \
             sh build.sh > "$out/build-mewcoder.log" 2>&1 || { tail -50 "$out/build-mewcoder.log"; exit 1; }
           tail -3 "$out/build-mewcoder.log"
+          # (built from a release tag: the site serves the release's own package, byte for byte; a rebuild of the same
+          # commit differs in its build date (ABOUT), so it would not be the file the release lists)
+          case "$ref" in refs/tags/*)
+            tg=${ref#refs/tags/}; u=$(printf %s "$tg" | sed 's/+/%2B/g')
+            curl -fsSL -o build/release.fwsc "https://github.com/${{ github.repository }}/releases/download/$u/$u.fwsc"
+            python3 -c "import sys; sys.path.insert(0, 'tools'); import fm1_install as I; a = open('build/release.fwsc', 'rb').read(); b = open('build/sloop-smk37-elite.fwsc', 'rb').read(); assert I.product_of(a) == I.product_of(b), (I.product_of(a), I.product_of(b)); print('the release package', I.product_of(a))"
+            mv build/release.fwsc build/sloop-smk37-elite.fwsc ;;
+          esac
           mv="2.8.4-mewcoder-$(git rev-parse --short HEAD)"
           echo "$mv" > "$out/mewcoder-version.txt"
           cp build/sloop-smk37-elite.fwsc "$out/sloop-smk37-elite-vocoder.fwsc"
@@ -186,6 +194,14 @@ jobs:
           BOARD=smk37 MODEL=elite FELUCCA_CDC=1 FELUCCA_CDC_ON=1 SMK_UAC_IN_PROBE=1 SMK_VOC_LEAN=1 FELUCCA_SLICE=1 SMK_HARM_BUILD=1 \
             sh build.sh > "$out/build-harmoniser.log" 2>&1 || { tail -50 "$out/build-harmoniser.log"; exit 1; }
           tail -3 "$out/build-harmoniser.log"
+          # (built from a release tag: the site serves the release's own package, byte for byte; a rebuild of the same
+          # commit differs in its build date (ABOUT), so it would not be the file the release lists)
+          case "$ref" in refs/tags/*)
+            tg=${ref#refs/tags/}; u=$(printf %s "$tg" | sed 's/+/%2B/g')
+            curl -fsSL -o build/release.fwsc "https://github.com/${{ github.repository }}/releases/download/$u/$u.fwsc"
+            python3 -c "import sys; sys.path.insert(0, 'tools'); import fm1_install as I; a = open('build/release.fwsc', 'rb').read(); b = open('build/sloop-smk37-elite.fwsc', 'rb').read(); assert I.product_of(a) == I.product_of(b), (I.product_of(a), I.product_of(b)); print('the release package', I.product_of(a))"
+            mv build/release.fwsc build/sloop-smk37-elite.fwsc ;;
+          esac
           hv="2.8.4-mewcoder-harmoniser-$(git rev-parse --short HEAD)"
           echo "$hv" > "$out/harmoniser-version.txt"
           cp build/sloop-smk37-elite.fwsc "$out/sloop-smk37-elite-harmoniser.fwsc"
